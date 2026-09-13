@@ -1,0 +1,16 @@
+# Signal 多阶段构建（compose.yaml 引用）
+FROM golang:1.22-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY vendor/ vendor/
+RUN go mod download || true
+COPY cmd/ cmd/
+COPY internal/ internal/
+RUN CGO_ENABLED=0 go build -o /out/signal ./cmd/signal
+
+FROM alpine:3.20
+RUN adduser -D -u 10001 signal
+USER signal
+COPY --from=build /out/signal /usr/local/bin/signal
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/signal"]

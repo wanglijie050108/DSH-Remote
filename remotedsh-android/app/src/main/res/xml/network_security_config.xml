@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 03 §3.4：v1 用 base-config 全放行（NSC 对 IP 字面量的 domain 匹配性 E4 实测确认后收窄）。
+     若 E4 证明 IP 字面量可用 <domain>，必须收窄到 127.0.0.1；
+     若不可用，则加硬约束：除 loopback 外 App 不得发起任何明文请求。 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -1,0 +1,46 @@
+{
+  "_meta": {
+    "source": "契约 §2 · scripts/generate-vectors.mjs 生成"
+  },
+  "cases": [
+    {
+      "name": "full with token",
+      "uri": "dshlink://pair?v=1&s=wss%3A%2F%2Fbridge.example.com%2Fv1%2Fsignal&pt=abc_def-123&fp=AA%3ABB%3ACC&a=127.0.0.1%3A13080&t=eyJhbGciOi",
+      "expect": {
+        "v": 1,
+        "s": "wss://bridge.example.com/v1/signal",
+        "pt": "abc_def-123",
+        "fp": "AA:BB:CC",
+        "a": "127.0.0.1:13080",
+        "t": "eyJhbGciOi"
+      }
+    },
+    {
+      "name": "without optional token",
+      "uri": "dshlink://pair?v=1&s=wss%3A%2F%2Fbridge.example.com%2Fv1%2Fsignal&pt=xyz&fp=AA%3ABB%3ACC&a=127.0.0.1%3A13080",
+      "expect": {
+        "v": 1,
+        "s": "wss://bridge.example.com/v1/signal",
+        "pt": "xyz",
+        "fp": "AA:BB:CC",
+        "a": "127.0.0.1:13080",
+        "t": null
+      }
+    },
+    {
+      "name": "missing pt → error",
+      "uri": "dshlink://pair?v=1&s=wss%3A%2F%2Fb.example.com%2Fv1%2Fsignal&fp=AA&a=127.0.0.1%3A13080",
+      "expect": null
+    },
+    {
+      "name": "wrong version v=2 → error",
+      "uri": "dshlink://pair?v=2&s=wss%3A%2F%2Fb.example.com%2Fv1%2Fsignal&pt=x&fp=AA&a=127.0.0.1%3A13080",
+      "expect": null
+    },
+    {
+      "name": "not a dshlink URL → error",
+      "uri": "https://example.com/?v=1",
+      "expect": null
+    }
+  ]
+}

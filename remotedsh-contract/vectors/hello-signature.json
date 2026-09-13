@@ -1,0 +1,70 @@
+{
+  "_meta": {
+    "source": "契约 §4.2 · docs/05 §2 G2 · scripts/generate-vectors.mjs 生成",
+    "rules": {
+      "ts": "epoch 秒，十进制整数，无小数/前导零/指数",
+      "msg": "UTF-8 \"hello|\" + String(ts) + \"|\" + nonce",
+      "nonce": "32B 随机 → base64url 无填充",
+      "sig": "ECDSA P-256/SHA-256，DER(ASN.1 SEQUENCE(r,s)) → base64url；不得 P1363",
+      "pub": "SPKI DER → base64url",
+      "note": "expected_sig 为 RFC 6979 确定性签名：JS(@noble) 可断言复现；Go/Java(随机化 ECDSA) MUST 断言「验证通过」而非「逐字节复现」"
+    },
+    "private_key_pkcs8_pem": "-----BEGIN PRIVATE KEY-----\nMEECAQAwEwYHKoZIzj0CAQYIKoZIzj0DAQcEJzAlAgEBBCArR0dS4/ZMNh0EKgzV\nDy/qiiVDenkSXajQnZ7CSeIeTw==\n-----END PRIVATE KEY-----\n"
+  },
+  "cases": [
+    {
+      "name": "ts=1770000000 nonce=gCEzU1KQ…",
+      "ts": 1770000000,
+      "nonce": "gCEzU1KQjzh6lVGJH_x1ze3ZUdCQtc0vQCixwFIvHm8",
+      "pub": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEMvMofP8_0pPKrGzaMMSIBKGiL5CjFWYLFlWPSh3xCYJiwPU76M-F5EsGw3WffE6ZoEPPIfNfteVINGb6OwXZpg",
+      "expected_msg_hex": "68656c6c6f7c313737303030303030307c6743457a55314b516a7a68366c56474a485f78317a65335a55644351746330765143697877464976486d38",
+      "expected_sig_base64url": "MEYCIQD4szM8PXWCKciTdyOTLXJtnWT3tmgixeXHoEUaLlqPmQIhAPJTx88X2x6MG75Y4JqZsbsN6NsVH_TUzWiM7rrUK1fu",
+      "expect_verify": true
+    },
+    {
+      "name": "ts=0 nonce=3FzatqqY…",
+      "ts": 0,
+      "nonce": "3FzatqqYDbu2NTFACBibL5PVMIeH8cmNtj9XIhwZWJc",
+      "pub": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEMvMofP8_0pPKrGzaMMSIBKGiL5CjFWYLFlWPSh3xCYJiwPU76M-F5EsGw3WffE6ZoEPPIfNfteVINGb6OwXZpg",
+      "expected_msg_hex": "68656c6c6f7c307c33467a6174717159446275324e544641434269624c3550564d49654838636d4e746a39584968775a574a63",
+      "expected_sig_base64url": "MEYCIQDjzbmCH1VlxPRYMbxooSRAihabXoHa308CXXQx7y9oyAIhANICCzPClx3z93ekQsl85O5Q4xrGFiOfHIvhmE-AsNAL",
+      "expect_verify": true
+    },
+    {
+      "name": "ts=0 nonce=EH4dy30F…",
+      "ts": 0,
+      "nonce": "EH4dy30F_nqlcVFbWQSA4hNOZm920dSyYiYX88lTCHI",
+      "pub": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEMvMofP8_0pPKrGzaMMSIBKGiL5CjFWYLFlWPSh3xCYJiwPU76M-F5EsGw3WffE6ZoEPPIfNfteVINGb6OwXZpg",
+      "expected_msg_hex": "68656c6c6f7c307c45483464793330465f6e716c635646625751534134684e4f5a6d3932306453795969595838386c54434849",
+      "expected_sig_base64url": "MEUCIE2Pni2I85J_cPIPsabsxefP7zHE_Wa5so1yr7F1qXjsAiEAzH6dbLNuh0deF-DIy_KJRZxm1pbdu4JV8NHukhvZ7Z4",
+      "expect_verify": true
+    },
+    {
+      "name": "tampered ts (auth fail)",
+      "ts": 1770000001,
+      "nonce": "gCEzU1KQjzh6lVGJH_x1ze3ZUdCQtc0vQCixwFIvHm8",
+      "pub": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEMvMofP8_0pPKrGzaMMSIBKGiL5CjFWYLFlWPSh3xCYJiwPU76M-F5EsGw3WffE6ZoEPPIfNfteVINGb6OwXZpg",
+      "expected_msg_hex": null,
+      "expected_sig_base64url": "MEYCIQD4szM8PXWCKciTdyOTLXJtnWT3tmgixeXHoEUaLlqPmQIhAPJTx88X2x6MG75Y4JqZsbsN6NsVH_TUzWiM7rrUK1fu",
+      "expect_verify": false
+    },
+    {
+      "name": "tampered sig",
+      "ts": 1770000000,
+      "nonce": "gCEzU1KQjzh6lVGJH_x1ze3ZUdCQtc0vQCixwFIvHm8",
+      "pub": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEMvMofP8_0pPKrGzaMMSIBKGiL5CjFWYLFlWPSh3xCYJiwPU76M-F5EsGw3WffE6ZoEPPIfNfteVINGb6OwXZpg",
+      "expected_msg_hex": "68656c6c6f7c313737303030303030307c6743457a55314b516a7a68366c56474a485f78317a65335a55644351746330765143697877464976486d38",
+      "expected_sig_base64url": "MEYCIQD4szM9PXWCKciTdyOTLXJtnWT3tmgixeXHoEUaLlqPmQIhAPJTx88X2x6MG75Y4JqZsbsN6NsVH_TUzWiM7rrUK1fu",
+      "expect_verify": false
+    },
+    {
+      "name": "wrong pub key",
+      "ts": 1770000000,
+      "nonce": "gCEzU1KQjzh6lVGJH_x1ze3ZUdCQtc0vQCixwFIvHm8",
+      "pub": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEi3YRo2cYQVJ1Ci55NctFa11zR8LyWVqEmmudt7gajsYJ5BuYu-sCTnVkNNF3RIuXbo4sBHE3g86U7-b1Wx98qg",
+      "expected_msg_hex": "68656c6c6f7c313737303030303030307c6743457a55314b516a7a68366c56474a485f78317a65335a55644351746330765143697877464976486d38",
+      "expected_sig_base64url": "MEYCIQD4szM8PXWCKciTdyOTLXJtnWT3tmgixeXHoEUaLlqPmQIhAPJTx88X2x6MG75Y4JqZsbsN6NsVH_TUzWiM7rrUK1fu",
+      "expect_verify": false
+    }
+  ]
+}

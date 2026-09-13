@@ -1,0 +1,22 @@
+{
+  "name": "dsh-mobile-link",
+  "version": "0.1.0",
+  "description": "DSH bundle: 把本机 DSH 经 WebRTC 隧道呈现给手机（dsh-mobile-link 插件，01 §2）",
+  "main": "./lib/index.js",
+  "scripts": {},
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "module",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@peculiar/x509": "2.1.0",
+    "qrcode": "1.5.4",
+    "werift": "0.24.4",
+    "ws": "8.21.3"
+  }
+}

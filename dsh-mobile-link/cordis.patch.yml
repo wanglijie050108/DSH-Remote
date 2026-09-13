@@ -1,0 +1,4 @@
+# cordis.patch.yml（01 §2）：把本 bundle 挂入 dsh --profile web
+- insert:
+    - id: mobile-link
+      name: 'dsh-mobile-link'

@@ -1,0 +1,6 @@
+{
+  "name": "dsh-mobile-link-skill",
+  "private": true,
+  "type": "module",
+  "description": "Verifier for the DSH facts that dsh-mobile-link depends on."
+}

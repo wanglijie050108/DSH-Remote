@@ -1,0 +1,25 @@
+# compose.yaml（02 §5 骨架）
+# TURN_SECRET 用 .env（0600）或 compose secret 注入 Signal 与 coturn 两处；属部署物，不入库。
+services:
+  caddy:
+    image: caddy:2
+    ports: ["443:443", "80:80"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    depends_on: [signal]
+  signal:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.signal
+    environment:
+      - TURN_SECRET=${TURN_SECRET}
+      - TURN_HOST=${TURN_HOST}
+    expose: ["8080"]            # 仅内网；暴露到公网会让「单 IP ≤16」退化为「全站 16 连接」
+  coturn:
+    image: coturn/coturn
+    network_mode: host          # TURN 推荐 host 网络（relay 端口段 + external-ip）
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+volumes:
+  caddy_data: {}

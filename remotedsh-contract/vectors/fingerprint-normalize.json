@@ -1,0 +1,62 @@
+{
+  "_meta": {
+    "source": "契约 §6.1 · scripts/generate-vectors.mjs 生成",
+    "rule": "取 sha-256 行（多行时归一后等于 sha-256 者；两级冲突 media 级为准）→ 剥前缀 → 删全部冒号与空白 → ASCII 小写 → 按字节比较；无 sha-256 行 = fail-closed"
+  },
+  "cases": [
+    {
+      "name": "plain sha-256 line",
+      "offer_lines": [
+        "a=fingerprint:sha-256 AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
+      ],
+      "expect": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+    },
+    {
+      "name": "case/colon/whitespace normalization",
+      "offer_lines": [
+        "a=fingerprint:sha-256 aa:bb:cc dd:ee:ff:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
+      ],
+      "expect": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+    },
+    {
+      "name": "hash-func with custom bits (sha-512) plus sha-256 line → take sha-256",
+      "offer_lines": [
+        "a=fingerprint:sha-512 11:22:33",
+        "a=fingerprint:sha-256 AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
+      ],
+      "expect": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+    },
+    {
+      "name": "session sha-1 + media sha-256 → sha-256 wins (RFC 8122 §5.1)",
+      "offer_lines": [
+        "a=fingerprint:sha-1 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33",
+        "m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
+        "a=fingerprint:sha-256 AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
+      ],
+      "expect": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+    },
+    {
+      "name": "media sha-1 + session sha-256 → sha-256 line exists at session level → take it",
+      "offer_lines": [
+        "a=fingerprint:sha-256 AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
+        "m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
+        "a=fingerprint:sha-1 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33"
+      ],
+      "expect": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+    },
+    {
+      "name": "only sha-1 → fail-closed (§6.1 无 sha-256 行立即中止)",
+      "offer_lines": [
+        "a=fingerprint:sha-1 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33"
+      ],
+      "expect": null
+    },
+    {
+      "name": "no fingerprint at all → fail-closed",
+      "offer_lines": [
+        "m=application 9 UDP/DTLS/SCTP webrtc-datachannel"
+      ],
+      "expect": null
+    }
+  ]
+}

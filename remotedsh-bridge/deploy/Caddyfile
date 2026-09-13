@@ -1,0 +1,7 @@
+# Caddyfile（02 §5）
+# MUST NOT 配置 trusted_proxies，除非 Caddy 前面真的还有一层可信代理（02 §5.1）；
+#   默认 Caddy 丢弃入站 X-Forwarded-* 并写入客户端地址 → Signal 取 socket 对端地址即正确。
+<domain> {
+  encode zstd gzip
+  reverse_proxy /v1/signal signal:8080
+}
