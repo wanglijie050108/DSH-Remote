@@ -101,7 +101,7 @@ any row marked ⚠.**
 > (**not** `return 401`), and `requestRejection` returns `403`/`401`/`undefined` from a ternary
 > (**not** `return 401`). Anchor substring assertions on what the source literally says.
 
-**werift API surface** (this is what makes DTLS pinning implementable — see §3.1): `RTCCertificate(privateKeyPem, certPem, signatureHash)`, `RTCConfiguration.certificates`, `PeerConfig.dtls.keys`, and `getFingerprints(): {algorithm, value}[]`. **Still unverified by anyone:** whether the injected certificate actually handshakes with `org.webrtc`, when `disconnected`/`failed` fire, and the real `bufferedAmount` curve.
+**werift API surface** (this is what makes DTLS pinning implementable — see §3.1): `RTCCertificate(privateKeyPem, certPem, signatureHash)`, `RTCConfiguration.certificates`, `PeerConfig.dtls.keys`, and `getFingerprints(): {algorithm, value}[]`. **Verified 2026-09-13 (werift↔werift loopback, `remotedsh-contract/scripts/poc-werift-loopback.mjs`):** `signatureHash` MUST be the `{hash, signature}` enum object `{hash: 4 /*HashAlgorithm.sha256_4*/, signature: 3 /*SignatureAlgorithm.ecdsa_3*/}` — the string `'sha-256'` constructs silently and the DTLS handshake then always fails (see §6 trap); non-trickle SDP carries all candidates after `setLocalDescription`; two labeled DataChannels (`data`/`ctl`) and 16373-byte frames work. Events are DOM-style properties (`pc.ondatachannel`, `ch.onopen`, `ch.onmessage`) or `Event.subscribe()` — assigning a bare function to the Event property throws at runtime. **Still unverified by anyone:** whether the injected certificate actually handshakes with `org.webrtc` (the Android half of G1), when `disconnected`/`failed` fire, and the real `bufferedAmount` curve.
 
 ### 3.1 The one fact that is a security anchor
 
@@ -177,6 +177,8 @@ Each row is a bug that passes code review and fails in production.
 | Letting the phone create a DataChannel | Forbidden; it needs the two `data`/`ctl` channels via `onDataChannel` and must not create its own |
 | Reading the tunnel as HTTP | It is an L4 byte pump. No HTTP parsing, no header rewriting, no `Content-Length` logic |
 | Assuming "fiber disposed" means "process exited" | Only the real process exit sends `bye`. Both candidate detectors in `docs/01` §2.2 fail toward **not** sending, which is the safe direction |
+| Passing `'sha-256'` (string) as `RTCCertificate`'s 3rd arg | MUST be the enum object `{hash: HashAlgorithm.sha256_4, signature: SignatureAlgorithm.ecdsa_3}` (= `{4,3}`). The string form constructs fine, passes code review, and the DTLS handshake then fails with an opaque error — verified 2026-09-13 on werift 0.24.4 (`remotedsh-contract/scripts/poc-werift-loopback.mjs`) |
+| Assigning a bare function to a werift Event property (e.g. `pc.onDataChannel = fn`) | werift Events need `.subscribe(fn)` or the DOM-style lowercase property (`pc.ondatachannel`); bare assignment to the Event field throws `execute is not a function` at runtime |
 
 ## 7. Provenance rule
 

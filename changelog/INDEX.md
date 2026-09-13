@@ -2,6 +2,7 @@
 
 | 编号 | 日期 | 类型 | 主题 | 影响文件 | 版本 |
 |---|---|---|---|---|---|
+| 009 | 2026-09-13 | 方案 | 回填 W1 发现：werift RTCCertificate 第三参须为 {hash,signature} 枚举（01 §3 + SKILL §3/§6 两行陷阱，用户批复） | new_docs/01、SKILL.md | 契约 v1.0.5（无契约变更） |
 | 008 | 2026-09-13 | 代码（验证留档） | 用户质询驱动：Go 版 bridge 补做线上测试（hello.ok 9ms / 负例 AUTH_FAILED / 全链路 pair.ok + 隧道回环 50KB PASS，零修补） | 无文件改动 | 契约 v1.0.5 |
 | 007 | 2026-09-13 | 代码 | S5 安卓源码树初建：core-contract/rtc/proxy/pairing/bridge + app 壳（无 SDK 仅源码） | remotedsh-android/（新建） | 契约 v1.0.5 |
 | 006 | 2026-09-13 | 代码 | S4 服务端 Go 实现：hub 生命周期五条件/auth 共享向量/limit + deploy 全套，go test 全绿 | remotedsh-bridge/（新建） | 契约 v1.0.5 |
