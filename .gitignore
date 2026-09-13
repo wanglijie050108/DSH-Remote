@@ -15,3 +15,6 @@ signal.exe
 
 # 环境变量与部署物（TURN_SECRET 等，deploy/DEPLOY.md 的 .env 指引）
 .env
+
+# SSH 部署私钥（绝不入库）
+.keys/

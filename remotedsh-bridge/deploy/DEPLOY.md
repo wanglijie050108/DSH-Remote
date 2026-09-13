@@ -44,3 +44,30 @@ npx wscat -c wss://<domain>/v1/signal
 
 ## 7. ws:// → wss:// 切换时机（05 §4.3）
 域名已解析且 Caddy 成功签发证书 → 改 QR 的 `s` 字段为 `wss://` 并把 8080 规则从安全组移除。
+
+## 8. G1 阶段实装记录（2026-09-14，114.55.114.12）
+
+G1 前置只需 coturn，未走 compose（Signal/Caddy 上线时再整体迁移），实装路径：
+
+```sh
+apt install -y coturn                          # Ubuntu 24.04 → coturn 4.6.1
+echo '<64位随机密钥>' > /root/.turn_secret     # chmod 600；与 Signal 侧同源
+# /etc/turnserver.conf 按 02 §4 写入，两处修正见下
+systemctl enable --now coturn
+```
+
+**实测踩坑（已写入部署配置）**：
+1. `log-file=` 要的是**文件路径**（`/var/log/turn/turn.log`）而非目录——给目录会让 coturn 每次启动报
+   `Cannot open log file` 且 verbose 全丢（02 §4 预警的"各版本行为不一"实锤）；
+2. 不要手加 `listening-ip=0.0.0.0` / `relay-ip=`——按文档默认（全地址）即可，显式指定反而不必要；
+3. 安全组：`3478/UDP+TCP`、`49160-49999/UDP`（控制台端口范围格式用英文短横线 `49160-49999`）。
+
+**验证（脚本在 remotedsh-contract/scripts/，可复跑）**：
+- `verify-turn.mjs`：STUN 绑定 PASS（自见出口地址）+ 401 挑战 PASS；
+- `verify-turn-werift.mjs`（项目真实栈）：**host=4 / srflx=4 / relay=1，三类候选一次收齐** —— G1 判据②服务器侧达成；
+- pion/turn（独立 Go 客户端）：ALLOCATE PASS（relay 114.55.114.12:49972）；
+- `turnutils_uclient`（coturn 自带工具）对本机分配报 "unknown allocate response"——实测工具怪癖，以上述三类客户端为准。
+
+排障期间曾误停服务导致客户端全部超时——**凡"所有客户端同时超时"，先查服务是否真的在监听**（`ss -lnup | grep 3478`）。
+
+生产前待办：关闭 `verbose`（公网 TURN 开 verbose 会大量写日志）。
