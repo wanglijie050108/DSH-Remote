@@ -16,7 +16,6 @@ const (
 	GraceT        = 24 * time.Hour // T = 24h（用户 2026-09-12 决策；纯内存上界，判据是 boot_id）
 	PairLimit     = 256            // 实例 pair 上限（超限 PAIR_LIMIT，不淘汰——用户 2026-09-13 决策）
 	PTokTTL       = 5 * time.Minute
-	SweeperPeriod = 30 * time.Second
 	SilentAfter   = 60 * time.Second // 60s 无帧判离线（02 §3.2；半开连接只靠它发现）
 	OfferMinGap   = 2 * time.Second  // 自发 punch.offer 最小间隔（02 §3.3；punch.request 触发的不受限）
 	OfferRequestedWindow = 10 * time.Second // 此窗口内出现过的 punch.request 使 offer 视为「受请求触发」

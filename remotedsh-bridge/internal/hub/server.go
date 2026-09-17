@@ -99,7 +99,7 @@ func (s *Server) HandleSignal(w http.ResponseWriter, r *http.Request) {
 
 // Sweeper：60s 无帧判离线（02 §3.2；半开连接只靠它发现）
 func (s *Server) StartSweeper() *time.Ticker {
-	t := time.NewTicker(limit2SweeperPeriod)
+	t := time.NewTicker(SweeperPeriod)
 	go func() {
 		for range t.C {
 			s.Disp.Hub.Sweep(time.Now())
@@ -108,4 +108,4 @@ func (s *Server) StartSweeper() *time.Ticker {
 	return t
 }
 
-const limit2SweeperPeriod = 30 * time.Second
+const SweeperPeriod = 30 * time.Second
