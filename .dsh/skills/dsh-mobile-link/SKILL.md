@@ -204,19 +204,32 @@ retroactively. Records are **append-only**: a wrong record is corrected by a new
 names it, never edited or deleted. Review verdicts and user decisions get a record even when no
 file changes that day. Convention and template: `changelog/README.md`.
 
-## 9. Android code: known gaps and placeholders (as of 2026-09-17)
+## 9. Android code status (as of 2026-09-17, updated 014)
 
-The Android app compiles against a Kotlin toolchain but is **not yet runnable on a device**.
-The following are known unfilled holes — do not assume they work when reading the source:
+The Android app compiles against a Kotlin toolchain but is **not yet verified on a real device**.
+The following tracks what has been wired and what still needs device testing:
 
-| Gap | Location | What's missing |
+### ✅ Wired (014 — `qc_android_wiring`)
+
+| Item | Location | What was done |
 |---|---|---|
-| RTC → Proxy data path | `core-rtc/.../RtcEngine.kt` `observeChannels()` | `onDataChannel` callback body is **commented out**; frames from `data`/`ctl` channels are not routed into `LocalProxy` |
-| Proxy → RTC data path | `core-proxy/.../LocalProxy.kt` `routeToSocket()` | Comment says "具体接线由 app 层完成" — no caller exists |
-| WebRTC SDK dependency | `core-rtc/build.gradle.kts` | Uses placeholder import `io.getstream.webrtc.RoomPeerConnection`; real `org.webrtc` (google-webrtc) API is not integrated |
-| QR scanning | `app/.../MainActivity.kt` `ScanScreen` | zxing-embedded is mentioned in docs but not wired; `onScan` callback is a no-op |
-| G1 gate (werift ↔ org.webrtc) | — | **Never tested.** The PoC was werift↔werift loopback only. The most critical technical assumption of the entire project remains unvalidated |
-| E4 risk (WebView plaintext loopback) | `app/.../MainActivity.kt` `configureSecureWebView` | `http://127.0.0.1:13080` may be blocked by Android's cleartext policy; not tested on a real device |
-| SignalClient ↔ StateMachine wiring | `core-bridge/.../SignalClient.kt` + `app/.../StateMachine.kt` | `StateMachine.onSignalError` is defined but never called from `SignalClient.listener` |
+| QR parsing | `core-contract/.../PairQR.kt` (new) | `PairQRCodec.parse()` mirrors JS `parsePairQr`, fills missing import in Pairing.kt |
+| RTC engine | `core-rtc/.../RtcEngine.kt` (rewritten) | Real `org.webrtc` APIs: `PeerConnectionFactory`, pin verification, dual DataChannel observation, `TunnelSender` + `sendCtlFrame` |
+| App glue | `app/.../AppViewModel.kt` (new) | Complete flow: QR→signal→pair→WebRTC offer/answer→tunnel ready→WebView |
+| RTC→Proxy data path | `AppViewModel.onDataFrameReceived` | Decodes frames, routes DATA to `proxy.routeToSocket()`, handles FIN/RST, sends WINDOW via ctl |
+| Proxy→RTC data path | `AppViewModel.onTunnelReady` | Sets `proxy.senderProvider = rtc.tunnelSender` when tunnel ready |
+| QR scanning | `MainActivity.ScanScreen` | Wired to `ScanContract` (journeyapps), triggers `viewModel.onQrScanned()` |
+| SignalClient→StateMachine | `AppViewModel.onSignalErrorEvent` | Routes `SignalEvent.Error` to `StateMachine.onSignalError` with correct `isPassive` |
+| PING auto-reply | `AppViewModel.onCtlFrameReceived` | Auto-replies PONG on ctl channel (DSH mux 2s heartbeat) |
+| Reconnect path | `AppViewModel.onHelloOk` | Skips bind(ptok) when `e.pair` is non-null (existing pair) |
+| WebRTC dep location | `core-rtc/build.gradle.kts` | `io.getstream:stream-webrtc-android:1.1.3` (wraps `org.webrtc`) moved here from `app` |
+| fp vs agentId | `AppViewModel.qrFp` | Separate from `agentId` — certificate fingerprint ≠ public key hash (SKILL §3.1) |
 
-**When you modify any of these files, you are filling in a skeleton.** Read the gap list above first so you don't assume the existing code already handles that responsibility.
+### ❌ Still needs device testing
+
+| Gap | Why can't be solved offline |
+|---|---|
+| G1 gate (werift ↔ org.webrtc) | Must test on real Android device |
+| E4 risk (WebView plaintext loopback) | Must test on real Android device |
+| `org.webrtc` ABI / NDK / ProGuard | Only surfaces when building and running on device |
+| DataChannel parameter compatibility | Must verify ordered/binary between werift and Google WebRTC |
