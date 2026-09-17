@@ -17,6 +17,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -27,12 +30,20 @@ class MainActivity : ComponentActivity() {
     private var webView: WebView? = null
     private var lastInterruptedAt: Long? = null
 
+    // 使用 Compose observable state，UI 会自动响应变化
+    private var appState by mutableStateOf<AppState>(AppState.Idle)
+    private var launchToken: String? = null
+
+    // 供外部模块（SignalClient/状态机）更新状态
+    fun updateState(newState: AppState) { appState = newState }
+    fun setLaunchToken(token: String?) { launchToken = token }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    when (val s = MainViewModel.state) {
+                    when (val s = appState) {
                         is AppState.Scanning, is AppState.Idle -> ScanScreen(onScan = { /* zxing-embedded 启动扫码 */ })
                         is AppState.NeedPair, is AppState.Reconnecting, is AppState.Busy, is AppState.UpgradeRequired,
                         is AppState.Signaling, is AppState.Punching -> StatusScreen(s)
@@ -97,7 +108,7 @@ class MainActivity : ComponentActivity() {
             override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, errorResponse: android.webkit.WebResourceResponse?) {
                 // 「QR 里没有 t、本地也没有 cookie」路径（03 §3.4）：401 → 状态屏提示，不反复重试
                 if (request?.isForMainFrame == true && errorResponse?.statusCode == 401) {
-                    MainViewModel.state = AppState.NeedPair("本地登录已失效，请在 PC 上用 `dsh web` 重新生成带 token 的二维码后重新扫码")
+                    appState = AppState.NeedPair("本地登录已失效，请在 PC 上用 `dsh web` 重新生成带 token 的二维码后重新扫码")
                 }
             }
 
@@ -111,7 +122,7 @@ class MainActivity : ComponentActivity() {
         wv.setDownloadListener { _, _, _, _, _ -> /* 拒绝下载（DSH 有 /export 下载入口） */ }
         wv.setSupportMultipleWindows(false)
         // token 交换：GET http://127.0.0.1:13080/?token=<QR 中的 t> → 303 + Set-Cookie → 固定 loadUrl
-        val token = MainViewModel.launchToken
+        val token = launchToken
         if (token != null) {
             wv.loadUrl("$AUTHORITY_URL/?token=$token")
         } else {
@@ -127,9 +138,4 @@ class MainActivity : ComponentActivity() {
         }
         lastInterruptedAt = null
     }
-}
-
-object MainViewModel {
-    var state: AppState = AppState.Idle
-    var launchToken: String? = null // 来自 QR 的 t（不落盘）
 }

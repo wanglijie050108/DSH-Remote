@@ -9,6 +9,8 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
+import android.os.Handler
+import android.os.Looper
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 import kotlin.random.Random
@@ -40,6 +42,8 @@ class SignalClient(
     private var heartbeatStarted = false
     private var backoffMs = 500L
     private var closedByUs = false
+    private val handler = Handler(Looper.getMainLooper())
+    private val connectRunnable = Runnable { connect() }
 
     fun connect() {
         closedByUs = false
@@ -70,10 +74,11 @@ class SignalClient(
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 heartbeatStarted = false
                 if (closedByUs) return
-                // 指数退避 500ms→30s + 抖动（03 §3.3）
-                Thread.sleep(backoffMs + Random.nextLong(0, backoffMs / 3))
+                // 指数退避 500ms→30s + 抖动，通过 Handler postDelayed 避免阻塞 OkHttp 回调线程
+                handler.removeCallbacks(connectRunnable)
+                val delay = backoffMs + Random.nextLong(0, backoffMs / 3)
                 backoffMs = min(backoffMs * 2, 30_000L)
-                connect()
+                handler.postDelayed(connectRunnable, delay)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -142,6 +147,7 @@ class SignalClient(
     fun close() {
         closedByUs = true
         heartbeatStarted = false
+        handler.removeCallbacks(connectRunnable)
         ws?.close(1000, "client close")
     }
 

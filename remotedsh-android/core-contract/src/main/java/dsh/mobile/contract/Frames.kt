@@ -40,6 +40,9 @@ object FrameCodec {
         if (payload.size > Frames.MAX_PAYLOAD) {
             throw FrameException("LEN_OVERFLOW", "len=${payload.size} > ${Frames.MAX_PAYLOAD}")
         }
+        if (streamId < 0 || streamId > 0xFFFFFFFFL) {
+            throw FrameException("BAD_STREAM_ID", "stream_id=$streamId 超出 u32 范围（契约 §3.1）")
+        }
         val out = ByteArray(Frames.FRAME_HEADER_SIZE + payload.size)
         val b = ByteBuffer.wrap(out)
         b.put(Frames.FRAME_VER.toByte()).put(type.toByte()).put(0)
@@ -59,10 +62,12 @@ object FrameCodec {
         val type = b.get().toInt() and 0xFF
         val flags = b.get().toInt() and 0xFF
         val streamId = b.int.toLong() and 0xFFFFFFFFL
-        val len = b.int
-        if (len < 0 || len > Frames.MAX_PAYLOAD) throw FrameException("LEN_OVERFLOW", "len=$len")
+        // ByteBuffer.getInt() 返回 signed int；契约 len 是 u32（0–16373），转 unsigned 后校验
+        val len = b.int.toLong() and 0xFFFFFFFFL
+        if (len > Frames.MAX_PAYLOAD) throw FrameException("LEN_OVERFLOW", "len=$len")
         if (length - Frames.FRAME_HEADER_SIZE < len) throw FrameException("HEADER_INCOMPLETE", "truncated")
-        val payload = ByteArray(len)
+        val payloadLen = len.toInt()
+        val payload = ByteArray(payloadLen)
         b.get(payload)
         return Frame(ver, type, flags, streamId, payload)
     }

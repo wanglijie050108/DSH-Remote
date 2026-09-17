@@ -112,7 +112,13 @@ export class BridgeClient {
     if (!this.ws || this.ws.readyState !== this.ws.OPEN) return Promise.resolve(false)
     return new Promise((resolve) => {
       const timer = setTimeout(() => resolve(false), 2000)
-      this.opts.onByeOk = () => { clearTimeout(timer); resolve(true) }
+      const origOnByeOk = this.opts.onByeOk
+      this.opts.onByeOk = (msg) => {
+        clearTimeout(timer)
+        this.opts.onByeOk = origOnByeOk // 恢复原有回调
+        resolve(true)
+        origOnByeOk?.(msg) // 透传原回调（日志用）
+      }
       this.send({ t: 'bye', reason })
     })
   }

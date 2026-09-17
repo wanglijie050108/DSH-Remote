@@ -312,7 +312,7 @@ const PROJECT_CONSTANTS = [
   { name: 'TURN credential TTL', value: '3600 s', doc: 'contract §5' },
   { name: 'signalling heartbeat', value: '25 s client / 60 s server', doc: 'contract §4' },
   { name: 'hello deadline', value: '10 s', doc: 'contract §4.1' },
-  { name: 'contract version', value: 'v1.0.3', doc: 'contract §7' },
+  { name: 'contract version', value: 'v1.0.5', doc: 'contract §7' },
   { name: 'frame ver / QR v', value: '1 / 1', doc: 'contract §7' },
 ]
 

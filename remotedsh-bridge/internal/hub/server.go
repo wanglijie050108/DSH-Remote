@@ -4,6 +4,7 @@ package hub
 import (
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -51,12 +52,15 @@ func (s *Server) HandleSignal(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	defer ws.Close()
+	// 防 hello 超时与 defer ws.Close() 重复关闭：用 once 保证 Close 只执行一次
+	var closeOnce sync.Once
+	closeWS := func() { closeOnce.Do(func() { _ = ws.Close() }) }
+	defer closeWS()
 
 	conn := &Conn{
-		IP:   ip,
-		Send: func(b []byte) error { return ws.WriteMessage(websocket.TextMessage, b) },
-		Close: func() { _ = ws.Close() },
+		IP:    ip,
+		Send:  func(b []byte) error { return ws.WriteMessage(websocket.TextMessage, b) },
+		Close: closeWS,
 	}
 	sess := &Session{Conn: conn}
 	s.Disp.Register(sess)
@@ -65,7 +69,7 @@ func (s *Server) HandleSignal(w http.ResponseWriter, r *http.Request) {
 	// hello 门禁：10s 内未收到合法 hello → 关闭（契约 §4.1）
 	helloTimer := time.AfterFunc(limit.HelloDeadline, func() {
 		if !sess.HelloOK {
-			_ = ws.Close()
+			closeWS()
 		}
 	})
 	defer helloTimer.Stop()
@@ -77,7 +81,7 @@ func (s *Server) HandleSignal(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if mt != websocket.TextMessage {
-			_ = ws.Close() // 一帧一消息 JSON 文本帧
+			closeWS() // 一帧一消息 JSON 文本帧
 			break
 		}
 		s.Disp.HandleFrame(sess, raw)

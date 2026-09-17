@@ -2,6 +2,8 @@
 
 | 编号 | 日期 | 类型 | 主题 | 影响文件 | 版本 |
 |---|---|---|---|---|---|
+| 012 | 2026-09-17 | 工具 + 代码 | 补充开发 Skill：新增 5 陷阱 + Android 已知占位符 §9 + 契约版本勘误；011 代码修复 | SKILL.md、verify-dsh-facts.mjs、server.go、bridge.js、SignalClient.kt、MainActivity.kt、Frames.kt | 契约 v1.0.5 |
+| 011 | 2026-09-17 | 代码 | 代码质量修复：Go WebSocket 重复关闭、JS 回调覆盖、Android Thread.sleep 阻塞 / Compose state 不可观测 / Frames 有符号截断 | server.go、bridge.js、SignalClient.kt、MainActivity.kt、Frames.kt | 契约 v1.0.5（无契约变更） |
 | 010 | 2026-09-14 | 部署 + 代码 | coturn 部署到 114.55.114.12 并三层客户端验证：werift 三类候选一次收齐（G1 判据②服务器侧达成）+ pion Allocate PASS | deploy/DEPLOY.md §8、scripts/verify-turn*.mjs | 契约 v1.0.5 |
 | 009 | 2026-09-13 | 方案 | 回填 W1 发现：werift RTCCertificate 第三参须为 {hash,signature} 枚举（01 §3 + SKILL §3/§6 两行陷阱，用户批复） | new_docs/01、SKILL.md | 契约 v1.0.5（无契约变更） |
 | 008 | 2026-09-13 | 代码（验证留档） | 用户质询驱动：Go 版 bridge 补做线上测试（hello.ok 9ms / 负例 AUTH_FAILED / 全链路 pair.ok + 隧道回环 50KB PASS，零修补） | 无文件改动 | 契约 v1.0.5 |

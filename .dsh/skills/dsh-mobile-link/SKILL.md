@@ -35,7 +35,7 @@ Never edit these four; they are inputs, not notes. Resolve disagreements **in th
 
 | Order | Document | Holds |
 |---|---|---|
-| 1 | `docs/00-接口契约(1).md` (**v1.0.3**) | The only interface truth for all three components |
+| 1 | `docs/00-接口契约(2).md` (**v1.0.5**) | The only interface truth for all three components |
 | 2 | `docs/01-DSH端插件实施方案(1).md` (v1.2) | Plugin form, lifecycle, module design, DoD |
 | 3 | `docs/02-服务端实施方案(1).md` (v1.2) | Bridge / coturn / Caddy |
 | 4 | `docs/03-APP端实施方案(1).md` (v1.2) | Android app |
@@ -179,6 +179,11 @@ Each row is a bug that passes code review and fails in production.
 | Assuming "fiber disposed" means "process exited" | Only the real process exit sends `bye`. Both candidate detectors in `docs/01` §2.2 fail toward **not** sending, which is the safe direction |
 | Passing `'sha-256'` (string) as `RTCCertificate`'s 3rd arg | MUST be the enum object `{hash: HashAlgorithm.sha256_4, signature: SignatureAlgorithm.ecdsa_3}` (= `{4,3}`). The string form constructs fine, passes code review, and the DTLS handshake then fails with an opaque error — verified 2026-09-13 on werift 0.24.4 (`remotedsh-contract/scripts/poc-werift-loopback.mjs`) |
 | Assigning a bare function to a werift Event property (e.g. `pc.onDataChannel = fn`) | werift Events need `.subscribe(fn)` or the DOM-style lowercase property (`pc.ondatachannel`); bare assignment to the Event field throws `execute is not a function` at runtime |
+| Calling `ws.Close()` from multiple code paths in Go (e.g. hello timer + defer) | Wrap in `sync.Once`. Although `gorilla/websocket.Conn.Close()` is idempotent, the second call logs an error. Use `var closeOnce sync.Once; closeWS := func() { closeOnce.Do(func() { _ = ws.Close() }) }` and route all close paths (hello timeout, non-text frame, defer) through `closeWS`. | 011 审查 |
+| Overwriting a callback (e.g. `this.opts.onByeOk`) set by another module | Save the original handler reference; call it after your own logic. Exit-time paths like `sendByeOnShutdown` are still part of the single `Bridge` instance and must not silently destroy the handler that `index.js` wired. | 011 审查 |
+| `Thread.sleep()` inside an OkHttp `WebSocketListener` callback (Android) | OkHttp callbacks execute on OkHttp's thread pool. Blocking them delays ALL WebSocket connections on that dispatcher. Use `Handler(Looper.getMainLooper()).postDelayed(reconnectRunnable, delay)` instead, and cancel via `handler.removeCallbacks()` in `close()`. | 011 审查 |
+| Managing Compose UI state with a plain `var` in Activity | Compose only recomposes when a `State<T>` changes. Use `var s by mutableStateOf<T>(initial)` — not `object MainViewModel { var state = ... }`. A plain property mutation is invisible to the recomposition system; the UI will never refresh. | 011 审查 |
+| Kotlin `ByteBuffer.getInt()` for protocol u32 fields | `getInt()` returns a **signed** `Int`. Protocol fields defined as `u32` (e.g. frame `len`, `stream_id`) MUST be read as `b.int.toLong() and 0xFFFFFFFFL`. The old check `len < 0 \|\| len > MAX` "works" for current values but breaks silently if the protocol ever carries `len >= 2^31`. JS (`DataView.getUint32`) and Go (`binary.BigEndian.Uint32`) do not have this problem. | 011 审查 |
 
 ## 7. Provenance rule
 
@@ -198,3 +203,20 @@ at the top of `changelog/INDEX.md`, written in the same sitting as the change it
 retroactively. Records are **append-only**: a wrong record is corrected by a new record that
 names it, never edited or deleted. Review verdicts and user decisions get a record even when no
 file changes that day. Convention and template: `changelog/README.md`.
+
+## 9. Android code: known gaps and placeholders (as of 2026-09-17)
+
+The Android app compiles against a Kotlin toolchain but is **not yet runnable on a device**.
+The following are known unfilled holes — do not assume they work when reading the source:
+
+| Gap | Location | What's missing |
+|---|---|---|
+| RTC → Proxy data path | `core-rtc/.../RtcEngine.kt` `observeChannels()` | `onDataChannel` callback body is **commented out**; frames from `data`/`ctl` channels are not routed into `LocalProxy` |
+| Proxy → RTC data path | `core-proxy/.../LocalProxy.kt` `routeToSocket()` | Comment says "具体接线由 app 层完成" — no caller exists |
+| WebRTC SDK dependency | `core-rtc/build.gradle.kts` | Uses placeholder import `io.getstream.webrtc.RoomPeerConnection`; real `org.webrtc` (google-webrtc) API is not integrated |
+| QR scanning | `app/.../MainActivity.kt` `ScanScreen` | zxing-embedded is mentioned in docs but not wired; `onScan` callback is a no-op |
+| G1 gate (werift ↔ org.webrtc) | — | **Never tested.** The PoC was werift↔werift loopback only. The most critical technical assumption of the entire project remains unvalidated |
+| E4 risk (WebView plaintext loopback) | `app/.../MainActivity.kt` `configureSecureWebView` | `http://127.0.0.1:13080` may be blocked by Android's cleartext policy; not tested on a real device |
+| SignalClient ↔ StateMachine wiring | `core-bridge/.../SignalClient.kt` + `app/.../StateMachine.kt` | `StateMachine.onSignalError` is defined but never called from `SignalClient.listener` |
+
+**When you modify any of these files, you are filling in a skeleton.** Read the gap list above first so you don't assume the existing code already handles that responsibility.
