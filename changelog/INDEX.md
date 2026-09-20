@@ -2,6 +2,7 @@
 
 | 编号 | 日期 | 类型 | 主题 | 影响文件 | 版本 |
 |---|---|---|---|---|---|
+| 013 | 2026-09-17 | 代码 | Ponytail 审查：删除 hub.go 死常量 SweeperPeriod，统一命名 | hub.go、server.go | 契约 v1.0.5 |
 | 012 | 2026-09-17 | 工具 + 代码 | 补充开发 Skill：新增 5 陷阱 + Android 已知占位符 §9 + 契约版本勘误；011 代码修复 | SKILL.md、verify-dsh-facts.mjs、server.go、bridge.js、SignalClient.kt、MainActivity.kt、Frames.kt | 契约 v1.0.5 |
 | 011 | 2026-09-17 | 代码 | 代码质量修复：Go WebSocket 重复关闭、JS 回调覆盖、Android Thread.sleep 阻塞 / Compose state 不可观测 / Frames 有符号截断 | server.go、bridge.js、SignalClient.kt、MainActivity.kt、Frames.kt | 契约 v1.0.5（无契约变更） |
 | 010 | 2026-09-14 | 部署 + 代码 | coturn 部署到 114.55.114.12 并三层客户端验证：werift 三类候选一次收齐（G1 判据②服务器侧达成）+ pion Allocate PASS | deploy/DEPLOY.md §8、scripts/verify-turn*.mjs | 契约 v1.0.5 |
