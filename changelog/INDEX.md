@@ -2,6 +2,7 @@
 
 | 编号 | 日期 | 类型 | 主题 | 影响文件 | 版本 |
 |---|---|---|---|---|---|
+| 014 | 2026-09-17 | 代码 | Android 接线完成：PairQR + RtcEngine 重写 + AppViewModel + MainActivity 扫码头；复核修复 6 bug | 7 新建/重写 + 3 修改（见详情） | 契约 v1.0.5 |
 | 013 | 2026-09-17 | 代码 | Ponytail 审查：删除 hub.go 死常量 SweeperPeriod，统一命名 | hub.go、server.go | 契约 v1.0.5 |
 | 012 | 2026-09-17 | 工具 + 代码 | 补充开发 Skill：新增 5 陷阱 + Android 已知占位符 §9 + 契约版本勘误；011 代码修复 | SKILL.md、verify-dsh-facts.mjs、server.go、bridge.js、SignalClient.kt、MainActivity.kt、Frames.kt | 契约 v1.0.5 |
 | 011 | 2026-09-17 | 代码 | 代码质量修复：Go WebSocket 重复关闭、JS 回调覆盖、Android Thread.sleep 阻塞 / Compose state 不可观测 / Frames 有符号截断 | server.go、bridge.js、SignalClient.kt、MainActivity.kt、Frames.kt | 契约 v1.0.5（无契约变更） |

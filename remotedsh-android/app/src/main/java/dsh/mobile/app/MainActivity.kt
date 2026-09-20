@@ -10,6 +10,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 const val AUTHORITY_URL = "http://127.0.0.1:13080"
 
@@ -30,21 +33,43 @@ class MainActivity : ComponentActivity() {
     private var webView: WebView? = null
     private var lastInterruptedAt: Long? = null
 
-    // 使用 Compose observable state，UI 会自动响应变化
+    // Compose observable state
     private var appState by mutableStateOf<AppState>(AppState.Idle)
     private var launchToken: String? = null
 
-    // 供外部模块（SignalClient/状态机）更新状态
-    fun updateState(newState: AppState) { appState = newState }
-    fun setLaunchToken(token: String?) { launchToken = token }
+    // QR 扫描器（journeyapps zxing-android-embedded）
+    private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
+        result.contents?.let { viewModel.onQrScanned(it) }
+    }
+
+    // ViewModel
+    private val viewModel by lazy {
+        androidx.lifecycle.ViewModelProvider(this)[AppViewModel::class.java]
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 接线 ViewModel 回调
+        viewModel.onNavigate = { url ->
+            launchToken = if (url.contains("?token=")) {
+                url.substringAfter("?token=")
+            } else null
+            appState = AppState.Connected(sinceMs = System.currentTimeMillis())
+            webView?.let { loadInWebView(it, url) }
+        }
+        viewModel.onStateChange = { newState ->
+            appState = newState
+        }
+
         setContent {
+            val vm: AppViewModel = viewModel()
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     when (val s = appState) {
-                        is AppState.Scanning, is AppState.Idle -> ScanScreen(onScan = { /* zxing-embedded 启动扫码 */ })
+                        is AppState.Scanning, is AppState.Idle -> ScanScreen(onScan = {
+                            scanLauncher.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE))
+                        })
                         is AppState.NeedPair, is AppState.Reconnecting, is AppState.Busy, is AppState.UpgradeRequired,
                         is AppState.Signaling, is AppState.Punching -> StatusScreen(s)
                         is AppState.Connected -> WebViewScreen()
@@ -82,9 +107,21 @@ class MainActivity : ComponentActivity() {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
-                WebView(context).apply { configureSecureWebView(this) }
+                WebView(context).apply {
+                    configureSecureWebView(this)
+                    val token = launchToken
+                    if (token != null) {
+                        loadUrl("$AUTHORITY_URL/?token=$token")
+                    } else {
+                        loadUrl("$AUTHORITY_URL/")
+                    }
+                }
             },
         )
+    }
+
+    private fun loadInWebView(wv: WebView, url: String) {
+        wv.loadUrl(url)
     }
 
     /** WebView 配置清单（03 §3.4 安全红线逐条） */
@@ -92,50 +129,53 @@ class MainActivity : ComponentActivity() {
         webView = wv
         wv.settings.run {
             javaScriptEnabled = true
-            domStorageEnabled = true // 官方前端 localStorage 需要
+            domStorageEnabled = true
             allowFileAccess = false
             allowContentAccess = false
         }
-        android.webkit.WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG) // release 关闭
+        android.webkit.WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         android.webkit.CookieManager.getInstance().setAcceptCookie(true)
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                // 禁止任何导航离开 127.0.0.1
                 val host = request?.url?.host ?: return true
                 return !(host == "127.0.0.1" || host == "localhost")
             }
 
-            override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, errorResponse: android.webkit.WebResourceResponse?) {
-                // 「QR 里没有 t、本地也没有 cookie」路径（03 §3.4）：401 → 状态屏提示，不反复重试
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: android.webkit.WebResourceResponse?
+            ) {
                 if (request?.isForMainFrame == true && errorResponse?.statusCode == 401) {
                     appState = AppState.NeedPair("本地登录已失效，请在 PC 上用 `dsh web` 重新生成带 token 的二维码后重新扫码")
                 }
             }
 
-            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                lastInterruptedAt = System.currentTimeMillis() // 主框架错误视作中断计时起点（§4）
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                lastInterruptedAt = System.currentTimeMillis()
             }
         }
         wv.webChromeClient = object : WebChromeClient() {
-            override fun onCreateWindow(view: WebView?, dialog: Boolean, userGesture: Boolean, resultMsg: android.os.Message?): Boolean = false // 挡 window.open / target=_blank
+            override fun onCreateWindow(
+                view: WebView?,
+                dialog: Boolean,
+                userGesture: Boolean,
+                resultMsg: android.os.Message?
+            ): Boolean = false
         }
-        wv.setDownloadListener { _, _, _, _, _ -> /* 拒绝下载（DSH 有 /export 下载入口） */ }
+        wv.setDownloadListener { _, _, _, _, _ -> /* 拒绝下载 */ }
         wv.setSupportMultipleWindows(false)
-        // token 交换：GET http://127.0.0.1:13080/?token=<QR 中的 t> → 303 + Set-Cookie → 固定 loadUrl
-        val token = launchToken
-        if (token != null) {
-            wv.loadUrl("$AUTHORITY_URL/?token=$token")
-        } else {
-            wv.loadUrl("$AUTHORITY_URL/") // 无 t 分支：靠 onReceivedHttpError 401 引导
-        }
     }
 
-    /** 隧道重建完成回调（由连接层调用）：中断 >10s → reload（§4 必需路径） */
-    fun onTunnelReconnected() {
-        val now = System.currentTimeMillis()
-        if (shouldReloadOnReconnect(lastInterruptedAt, now)) {
-            webView?.reload()
-        }
-        lastInterruptedAt = null
+    fun updateState(newState: AppState) {
+        appState = newState
+    }
+
+    fun setLaunchToken(token: String?) {
+        launchToken = token
     }
 }
