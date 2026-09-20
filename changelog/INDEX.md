@@ -2,6 +2,10 @@
 
 | 编号 | 日期 | 类型 | 主题 | 影响文件 | 版本 |
 |---|---|---|---|---|---|
+| 032 | 2026-09-20 | 代码 + 测试 | 修复 Flutter 信令断线不重连、恢复路径复用旧 ptok、WINDOW 提前回填和 FIN 过早关流；新增 generation 隔离、一次性 token、部分写与 loopback 半关闭回归；ISS-004～007 进入验证中 | RemoteDSH-flutter/lib/{rtc,service}、RemoteDSH-flutter/test、ISSUES.md | 契约 v1.0.5（无契约变更） |
+| 031 | 2026-09-20 | 代码 + 纠偏 | 回填未随 018/022/023 合入的源码：fake-bridge TURN_HOST、2s 限流窗口复位、插件 20s gather + 30s rebuild 看门狗；ISS-001～003 关闭 | fake-bridge.mjs + 测试、dsh-mobile-link rtc/index + 测试、ISSUES.md | 契约 v1.0.5（无契约变更） |
+| 030 | 2026-09-20 | 用户决策 + 工具规则 | 建立动态问题台账：未解决/验证中置前，已解决置后；每项必须记录稳定 ID、引入原因、证据和关闭条件；规则写入项目 Skill | changelog/ISSUES.md、SKILL.md、changelog/030 | 契约 v1.0.5（无契约变更） |
+| 029 | 2026-09-20 | 代码 + 实验 | 修复插件 TURN username/credential 丢失；Flutter/插件双端启用 relay-only 并校验 offer 候选；修正 028“插件修复已落地”和“中间设备根因已定案”的表述，待真机长稳终验 | dsh-mobile-link/lib/{rtc,index}.js、dsh-mobile-link/test/rtc.test.mjs、RemoteDSH-flutter/lib/{rtc/rtc_link,service/harness}.dart、changelog/029 | 契约 v1.0.5（无契约变更） |
 | 028 | 2026-09-20 | 总结 / 复盘 | 鸿蒙阶段总结（015–027 + 027 后进展）：双应用路线复盘（原生 ArkWeb 冻结 = ArkWeb 平台缺陷锁死，非协议失败；Flutter 三理由保留）；**26s 闪断定性修正**——025「ArkWeb 特有」是错的，根因为 P2P 路径中间设备周期掐 UDP，换栈无效；Flutter 现状 7 项问题清单（relay 锚定待 DSH 重启终验等） | changelog/028、SYTKILLER/DSH-Remote-Hmos（新仓库：两应用代码 + README + LICENSE + 本 changelog） | 契约 v1.0.5（无契约变更） |
 | 027 | 2026-09-20 | 架构迁移（B1）+ 契约层 | B1 启动：flutter_webrtc-ohos 确认为原生 libwebrtc（libohos_webrtc.so NAPI，绕开 ArkWeb 26s 闪断）；契约层 Dart 参考实现入契约仓库（与 go/js/kotlin 平级，G2 向量 dart test 全绿含 RFC6979）；Flutter OHOS 工具链落地（dev 分支 3.7.12-ohos + 3 处 flutter_tools 补丁）；RemoteDSH-flutter App 真机 UI 首跑 ✓（三方 vendor + 签名复用）；待 QR 做 E2E | remotedsh-contract/dart/*、RemoteDSH-flutter/*、D:\flutter-ohos（3 补丁）、changelog/027 | 契约 v1.0.5（新增 dart/ 实现） |
 | 026 | 2026-09-20 | 实测+加固 | 真机 E2E：三类候选达成（host=1 srflx=1 relay=2）、getStats 证实 P2P 直连（rtt 11ms）；白屏机制全链定位——26s 闪断打断主 bundle 执行 → ModuleLoader 停 queue 无人 create → SPA 永不启动；交付 ModuleLoader kick（onPageEnd 后自动补 create）+ 引导自检日志；遗留：DOM 渲染但截屏仍白（ArkWeb 合成层问题，待用户肉眼核验） | RemoteDSH-hmos/pages/DshWebPage.ets、changelog/026 | 契约 v1.0.5（无契约变更） |

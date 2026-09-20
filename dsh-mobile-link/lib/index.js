@@ -8,7 +8,7 @@ import { loadConfig, ConfigError } from './config.js'
 import { loadIdentity, createDtlsCertificate, KeysError } from './keys.js'
 import { BridgeClient } from './bridge.js'
 import { Tunnel } from './tunnel.js'
-import { createOfferPeer } from './rtc.js'
+import { createOfferPeer, turnIceServers } from './rtc.js'
 import { newPairToken, ptokHash, buildPairUri, renderQr } from './pairing.js'
 import { registerApprovalStub } from './approve.js'
 
@@ -16,6 +16,7 @@ export const name = 'dsh-mobile-link'
 export const inject = ['webServer', 'connection', 'approval']
 
 const CRED_TTL_THRESHOLD = 300_000 // 剩余 TTL < 300s 视为无效（契约 §5，v1.0.4 写死）
+const REBUILD_TIMEOUT_MS = 30_000
 
 function makeLogger(level = 'info') {
   const order = { debug: 10, info: 20, warn: 30, error: 40 }
@@ -82,6 +83,7 @@ export function apply(ctx) {
     pendingCreds: null,  // relay.request 等待
     lastSpontaneousOffer: 0,
     rebuilding: false,
+    rebuildGeneration: 0,
   }
 
   // ---- 进程退出 vs fiber dispose（§2.2）----
@@ -123,7 +125,7 @@ export function apply(ctx) {
       state.pairToken = null // 用后即弃（§4.3）
       state.qrPrinted = false
       state.turn = { ...msg.turn, expireAt: Date.now() + msg.turn.ttl * 1000 }
-      state.iceServers = msg.turn.uris.map((u) => ({ urls: u }))
+      state.iceServers = turnIceServers(msg.turn)
       log.info(`pair.ok: ${msg.pair_id}（TURN 凭证已收；QR 作废，存续期不重印）`)
     },
     onPunchRequest: () => rebuild({ requested: true }), // punch.request 触发的 offer 不受 2s 窗口约束（§3.5 规则 3）
@@ -136,7 +138,7 @@ export function apply(ctx) {
     onPresence: (msg) => log.info(`presence: peer_online=${msg.peer_online}`), // A5：仅日志
     onRelayAlloc: (msg) => {
       state.turn = { ...msg.turn, expireAt: Date.now() + msg.turn.ttl * 1000 }
-      state.iceServers = msg.turn.uris.map((u) => ({ urls: u }))
+      state.iceServers = turnIceServers(msg.turn)
       state.pendingCreds?.resolve()
       state.pendingCreds = null
       log.info('relay.alloc: TURN 凭证就绪')
@@ -208,12 +210,31 @@ export function apply(ctx) {
   async function rebuild({ requested }) {
     if (state.rebuilding) return
     state.rebuilding = true
+    const generation = ++state.rebuildGeneration
+    const watchdog = setTimeout(() => {
+      if (generation !== state.rebuildGeneration) return
+      state.rebuildGeneration++
+      state.rebuilding = false
+      teardownTunnel()
+      log.error(`重建超时（${REBUILD_TIMEOUT_MS}ms）→ 强制解锁，允许下一次 punch 重试`)
+    }, REBUILD_TIMEOUT_MS)
+    watchdog.unref?.()
     try {
       if (!requested && Date.now() - state.lastSpontaneousOffer < 2000) return // 自发重发 ≥2s（§3.5 规则 3）
       state.lastSpontaneousOffer = Date.now()
       teardownTunnel()
       await ensureTurnCreds()
-      const { pc, dataCh, ctlCh, offer } = await createOfferPeer({ certificate, iceServers: state.iceServers, log: (...a) => log.info(...a) })
+      if (generation !== state.rebuildGeneration) return
+      const { pc, dataCh, ctlCh, offer } = await createOfferPeer({
+        certificate,
+        iceServers: state.iceServers,
+        iceTransportPolicy: process.env.DSML_RELAY_ONLY === '0' ? 'all' : 'relay',
+        log: (...a) => log.info(...a),
+      })
+      if (generation !== state.rebuildGeneration) {
+        pc.close()
+        return
+      }
       state.pc = pc
       const tunnel = new Tunnel({
         forwardTarget: cfg.forwardTarget,
@@ -237,7 +258,8 @@ export function apply(ctx) {
     } catch (e) {
       log.warn('重建失败:', e.message)
     } finally {
-      state.rebuilding = false
+      clearTimeout(watchdog)
+      if (generation === state.rebuildGeneration) state.rebuilding = false
     }
   }
 

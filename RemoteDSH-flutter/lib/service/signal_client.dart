@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:remotedsh_contract/contract/ec_key.dart';
 import 'package:remotedsh_contract/contract/hello.dart';
@@ -10,14 +11,23 @@ import 'package:remotedsh_contract/contract/hello.dart';
 class SignalClient {
   WebSocket? _ws;
   Timer? _heartbeat;
+  bool _closing = false;
+  bool _disconnectNotified = false;
   final void Function(String) log;
   final Future<void> Function(Map<String, dynamic> msg) onMessage;
-  SignalClient({required this.log, required this.onMessage});
+  final void Function()? onDisconnected;
+  SignalClient({
+    required this.log,
+    required this.onMessage,
+    this.onDisconnected,
+  });
 
   bool get connected => _ws != null && _ws!.readyState == WebSocket.open;
 
   Future<void> connect(String sigUrl, EcIdentity id) async {
     final ws = await WebSocket.connect(sigUrl.replaceFirst('http', 'ws'));
+    _closing = false;
+    _disconnectNotified = false;
     _ws = ws;
     ws.listen((data) {
       if (data is String) {
@@ -32,10 +42,10 @@ class SignalClient {
       }
     }, onDone: () {
       log('signal closed');
-      _ws = null;
-      stopHeartbeat();
+      _handleDisconnect(ws);
     }, onError: (Object e) {
       log('signal error: $e');
+      _handleDisconnect(ws);
     });
     ws.add(json.encode(buildHello(role: 'app', id: id)));
     // 心跳义务：每 25s 发 ping（契约 §4；缺失会被 60s sweeper 判离线）
@@ -55,12 +65,38 @@ class SignalClient {
   }
 
   Future<void> close() async {
+    _closing = true;
     stopHeartbeat();
-    try {
-      await _ws?.close();
-    } catch (_) {}
+    final ws = _ws;
     _ws = null;
+    try {
+      await ws?.close();
+    } catch (_) {}
   }
+
+  void _handleDisconnect(WebSocket ws) {
+    if (!identical(_ws, ws)) return;
+    _ws = null;
+    stopHeartbeat();
+    unawaited(_closeSocket(ws));
+    if (!_closing && !_disconnectNotified) {
+      _disconnectNotified = true;
+      onDisconnected?.call();
+    }
+  }
+
+  Future<void> _closeSocket(WebSocket ws) async {
+    try {
+      await ws.close();
+    } catch (_) {}
+  }
+}
+
+Duration signalReconnectDelay(int attempt, {Random? random}) {
+  final cappedAttempt = attempt.clamp(0, 6) as int;
+  final baseMs = min(24000, 500 * (1 << cappedAttempt));
+  final jitterMs = ((random ?? Random()).nextDouble() * baseMs * 0.25).round();
+  return Duration(milliseconds: min(30000, baseMs + jitterMs));
 }
 
 /// 03 §3.3 错误文案矩阵（不静默失败）；返回用户可读处置，或 null（无需处置）

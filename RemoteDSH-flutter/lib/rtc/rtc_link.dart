@@ -7,7 +7,13 @@ import 'dart:typed_data';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
 
 /// 通道抽象：隔离 flutter_webrtc 类型，使隧道泵可独立测试
-class RtcChannel {
+abstract class TunnelChannel {
+  void Function(Uint8List bytes)? onMessage;
+  int get bufferedAmount;
+  Future<void> send(Uint8List bytes);
+}
+
+class RtcChannel implements TunnelChannel {
   final webrtc.RTCDataChannel _ch;
   RtcChannel(this._ch);
 
@@ -45,10 +51,14 @@ class RtcLink {
     };
   }
 
-  static Future<RtcLink> create(List<Map<String, dynamic>> iceServers) async {
+  static Future<RtcLink> create(
+    List<Map<String, dynamic>> iceServers, {
+    String iceTransportPolicy = 'relay',
+  }) async {
     final config = <String, dynamic>{
       'iceServers': iceServers,
       'sdpSemantics': 'unified-plan',
+      'iceTransportPolicy': iceTransportPolicy, // 'relay' 锚定 coturn 绕开 P2P 路径中间设备掐 UDP
     };
     final pc = await webrtc.createPeerConnection(config);
     return RtcLink(pc);
