@@ -18,6 +18,18 @@ import 'package:remotedsh_flutter/service/tunnel.dart';
 
 enum HarnessPhase { idle, pairing, paired, punching, connecting, ready, needPair }
 
+class OneShotPairToken {
+  String? _value;
+
+  void replace(String? value) => _value = value;
+
+  String? take() {
+    final value = _value;
+    _value = null;
+    return value;
+  }
+}
+
 class Harness extends ChangeNotifier {
   Harness._();
 
@@ -50,6 +62,12 @@ class Harness extends ChangeNotifier {
   Completer<void>? pendingRelayAlloc;
   RtcChannel? pendingDataCh;
   RtcChannel? pendingCtlCh;
+  Timer? _signalReconnectTimer;
+  int _signalReconnectAttempt = 0;
+  int _signalGeneration = 0;
+  bool _signalConnecting = false;
+  bool _signalWanted = false;
+  final OneShotPairToken _pairToken = OneShotPairToken();
 
   static const int punchRetryMs = 25000;
   static const int punchMaxAttempts = 6;
@@ -136,6 +154,14 @@ class Harness extends ChangeNotifier {
   }
 
   Future<void> clearState() async {
+    _signalWanted = false;
+    _signalReconnectTimer?.cancel();
+    _signalReconnectTimer = null;
+    _signalReconnectAttempt = 0;
+    _signalGeneration++;
+    _pairToken.replace(null);
+    await signal?.close();
+    signal = null;
     sigURL = null;
     authority = null;
     pinnedFp = null;
@@ -158,14 +184,18 @@ class Harness extends ChangeNotifier {
       return;
     }
     log('QR 解析成功 sig=${qr.s} a=${qr.a} t?=${qr.t != null}');
-    _pendingPt = qr.pt;
-    await teardownTunnel(true);
+    _signalWanted = true;
+    _signalGeneration++;
+    _signalReconnectAttempt = 0;
+    _signalReconnectTimer?.cancel();
+    _pairToken.replace(qr.pt);
     sigURL = qr.s;
     authority = qr.a;
     pinnedFp = qr.fp;
     launchToken = qr.t ?? '';
     pairId = null;
     agentId = null;
+    await teardownTunnel(true);
     await saveState();
     _setPhase(HarnessPhase.pairing);
     await connectSignal();
@@ -177,26 +207,91 @@ class Harness extends ChangeNotifier {
       log('无配对信息，请先扫码');
       return;
     }
+    _pairToken.replace(null);
+    _signalWanted = true;
+    _signalGeneration++;
+    _signalReconnectAttempt = 0;
+    _signalReconnectTimer?.cancel();
     await teardownTunnel(true);
     _setPhase(HarnessPhase.pairing);
     await connectSignal();
   }
 
   Future<void> connectSignal() async {
-    await ensureIdentity();
-    await signal?.close();
-    final sig = SignalClient(log: log, onMessage: onSignalMessage);
-    signal = sig;
+    if (_signalConnecting || !_signalWanted || sigURL == null) return;
+    _signalConnecting = true;
+    final generation = _signalGeneration;
+    final url = sigURL!;
+    _signalReconnectTimer?.cancel();
+    _signalReconnectTimer = null;
+    SignalClient? next;
+    var failed = false;
+    var superseded = false;
     try {
-      await sig.connect(sigURL!, id!);
-      log('signal 已连接 → hello(app)');
+      await ensureIdentity();
+      await signal?.close();
+      late final SignalClient sig;
+      sig = SignalClient(
+        log: log,
+        onMessage: (msg) => _onSignalMessage(sig, generation, msg),
+        onDisconnected: () => _onSignalDisconnected(sig, generation),
+      );
+      next = sig;
+      signal = sig;
+      await sig.connect(url, id!);
+      if (!_signalWanted ||
+          generation != _signalGeneration ||
+          !identical(signal, sig)) {
+        superseded = true;
+        await sig.close();
+      } else {
+        log('signal 已连接 → hello(app)');
+      }
     } catch (e) {
+      failed = true;
       log('signal 连接失败: $e');
-      _setPhase(HarnessPhase.needPair);
+    } finally {
+      _signalConnecting = false;
+    }
+    if (failed && (next == null || identical(signal, next))) {
+      _scheduleSignalReconnect();
+    } else if (superseded && _signalWanted) {
+      connectSignal();
     }
   }
 
+  Future<void> _onSignalMessage(
+    SignalClient source,
+    int generation,
+    Map<String, dynamic> msg,
+  ) async {
+    if (!identical(signal, source) || generation != _signalGeneration) return;
+    await onSignalMessage(msg);
+  }
+
+  void _onSignalDisconnected(SignalClient source, int generation) {
+    if (!identical(signal, source) || generation != _signalGeneration) return;
+    log('signal 断开，保留配对状态并准备重连');
+    _scheduleSignalReconnect();
+  }
+
+  void _scheduleSignalReconnect() {
+    if (!_signalWanted ||
+        sigURL == null ||
+        _signalConnecting ||
+        _signalReconnectTimer?.isActive == true) {
+      return;
+    }
+    final delay = signalReconnectDelay(_signalReconnectAttempt++);
+    log('signal 将在 ${delay.inMilliseconds}ms 后重连');
+    _signalReconnectTimer = Timer(delay, () {
+      _signalReconnectTimer = null;
+      connectSignal();
+    });
+  }
+
   Future<void> onSignalMessage(Map<String, dynamic> msg) async {
+    _signalReconnectAttempt = 0;
     switch (msg['t'] as String?) {
       case 'hello.ok':
         if (msg['pair'] != null) {
@@ -209,9 +304,10 @@ class Harness extends ChangeNotifier {
           _setPhase(HarnessPhase.paired);
           await ensureTurnAndPunch();
         } else {
-          if (phase == HarnessPhase.pairing) {
+          final ptok = _pairToken.take();
+          if (ptok != null) {
             log('hello.ok 无 pair → pair.bind');
-            signal!.send({'t': 'pair.bind', 'ptok': _pendingPt!});
+            signal!.send({'t': 'pair.bind', 'ptok': ptok});
           } else {
             log('hello.ok 无 pair → NEED_PAIR（请重新扫码）');
             await clearState();
@@ -219,6 +315,7 @@ class Harness extends ChangeNotifier {
         }
         return;
       case 'pair.ok':
+        _pairToken.replace(null);
         pairId = msg['pair_id'] as String?;
         agentId = msg['agent_id'] as String?;
         final t = msg['turn'] as Map<String, dynamic>;
@@ -273,8 +370,6 @@ class Harness extends ChangeNotifier {
         return;
     }
   }
-
-  String? _pendingPt;
 
   void _handleSignalError(Map<String, dynamic> msg) {
     final action = signalErrorAction(msg);

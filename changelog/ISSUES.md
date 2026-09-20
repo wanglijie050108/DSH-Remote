@@ -8,10 +8,10 @@
 
 | ID | 优先级 | 状态 | 问题 | 引入原因 | 当前证据 | 关闭条件 |
 |---|---|---|---|---|---|---|
-| ISS-004 | P0 | 未解决 | Flutter 信令断线不会自动重连 | `SignalClient` 关闭时只停心跳，没有向 Harness 回调；初连失败反而进入 `needPair` | `signal_client.dart:29-39`、`harness.dart:185-194` | 500ms→30s 抖动退避；断网恢复无需重新扫码 |
-| ISS-005 | P0 | 未解决 | Flutter 免扫码恢复在 `hello.ok{pair:null}` 时崩溃或发送旧 token | 扫码与恢复共用 `pairing` 状态，未区分 fresh `ptok`；`_pendingPt!` 强制解包且成功配对后不清理 | `harness.dart:201-216,277` | 无 fresh token 时进入 NEED_PAIR；token 用后即弃；覆盖冷启动恢复测试 |
-| ISS-006 | P0 | 未解决 | Flutter WINDOW 信用提前回填 | socket 部分写入或尚在 pending 时，按完整 payload 计为“实际写入” | `tunnel.dart:328-347`；违反 `new_docs/03` §3.1/§3.2 | 仅按每次 `RawSocket.write()` 返回值累计；部分写入测试通过 |
-| ISS-007 | P0 | 未解决 | Flutter 收到 FIN 后过早关闭双向 socket | `_maybeClose` 只检查 `finRecv` 和待写队列，未等待本地发送方向结束 | `tunnel.dart:366-371`；违反 FIN 半关闭红线 | 收到 FIN 后继续读取并转发，直到双向终态；半关闭集成测试通过 |
+| ISS-004 | P0 | 验证中 | Flutter 信令断线不会自动重连 | `SignalClient` 关闭时只停心跳，没有向 Harness 回调；初连失败反而进入 `needPair` | 已增加主动/被动关闭区分、generation 隔离和 500ms→30s 抖动退避；测试已写，当前 Mac 无 Flutter 3.7/OHOS SDK，待执行 | 500ms→30s 抖动退避；断网恢复无需重新扫码 |
+| ISS-005 | P0 | 验证中 | Flutter 免扫码恢复在 `hello.ok{pair:null}` 时崩溃或发送旧 token | 扫码与恢复共用 `pairing` 状态，未区分 fresh `ptok`；`_pendingPt!` 强制解包且成功配对后不清理 | 改为 `OneShotPairToken.take()`；resume 明确清空 fresh token，无 token 时进入 NEED_PAIR；测试已写待 Flutter 环境执行 | 无 fresh token 时进入 NEED_PAIR；token 用后即弃；覆盖冷启动恢复测试 |
+| ISS-006 | P0 | 验证中 | Flutter WINDOW 信用提前回填 | socket 部分写入或尚在 pending 时，按完整 payload 计为“实际写入” | 首写和 flush 均只累计 `RawSocket.write()` 返回值；脚本化部分写回归已写待 Flutter 环境执行 | 仅按每次 `RawSocket.write()` 返回值累计；部分写入测试通过 |
+| ISS-007 | P0 | 验证中 | Flutter 收到 FIN 后过早关闭双向 socket | `_maybeClose` 只检查 `finRecv` 和待写队列，未等待本地发送方向结束 | 已延迟 send shutdown 至 pending 清空，并等待双向 FIN；loopback 半关闭回归已写待 Flutter 环境执行 | 收到 FIN 后继续读取并转发，直到双向终态；半关闭集成测试通过 |
 | ISS-008 | P1 | 未解决 | Flutter 隧道中断超过 10s 后没有主动 reload WebView | Flutter 迁移只实现 ModuleLoader queue 探针，没有记录中断时长或隧道恢复通知 | `RemoteDSH-flutter/lib/` 无对应恢复路径；`new_docs/03` §4 要求 | 恢复回调按中断时长触发一次 reload；短/长中断测试通过 |
 | ISS-009 | P1 | 验证中 | 双端 relay-only 是否能消除周期断线尚未验证 | P2P 路径不稳定；此前 TURN 配置缺陷使中继路径从未完整工作 | changelog 028/029；当前分支仅完成代码和 Node 测试 | offer/answer 仅 relay、getStats 选中 coturn，真机连续稳定至少 10 分钟并完成业务验收 |
 | ISS-010 | P1 | 未解决 | Flutter 将私钥、TURN 凭证和 launch token 明文落盘，并把 token 写入日志 | harness 从验证代码直接迁移，未接入平台安全存储和日志脱敏 | `harness.dart:85-108`、`dsh_web_page.dart:56-58` | 私钥进系统密钥设施，敏感状态加密或不持久化，日志不含 token/credential |

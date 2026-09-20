@@ -26,6 +26,7 @@ class _Stream {
   int writtenSinceWindow = 0;
   bool finSent = false;
   bool finRecv = false;
+  bool sendShutdown = false;
   bool rst = false;
   bool readingPaused = false;
   _Stream(this.socket) : credit = creditInitial;
@@ -37,8 +38,8 @@ class TunnelEndpoint {
   final Future<RawSocket?> Function()? connectFactory; // acceptor 专用
   final void Function(String reason)? onDead;
 
-  RtcChannel? dataCh;
-  RtcChannel? ctlCh;
+  TunnelChannel? dataCh;
+  TunnelChannel? ctlCh;
   final Map<int, _Stream> streams = {};
   int nextStreamId = 1;
   int errors = 0;
@@ -73,7 +74,7 @@ class TunnelEndpoint {
   }
 
   /// 通道就绪后回填（RTC 侧 onDataChannel / createDataChannel 完成后调用）
-  void bind(RtcChannel data, RtcChannel ctl) {
+  void bind(TunnelChannel data, TunnelChannel ctl) {
     dataCh = data;
     ctlCh = ctl;
     data.onMessage = (Uint8List bytes) => _onChannel(bytes, isCtl: false);
@@ -96,6 +97,7 @@ class TunnelEndpoint {
       } catch (_) {}
     }
     streams.clear();
+    _pendingWrites.clear();
     log('tunnel teardown: $reason');
   }
 
@@ -122,9 +124,10 @@ class TunnelEndpoint {
 
   void _pumpSocketToChannel(int id, _Stream st) {
     RawSocketEvent? handle(RawSocketEvent ev) {
-      if (st.rst || st.finSent) return null;
+      if (st.rst) return null;
       switch (ev) {
         case RawSocketEvent.read:
+          if (st.finSent) return null;
           // 信用控制：信用 0 → 停读（§3.4.5 发送方信用为 0 即暂停读）
           if (st.credit <= 0) {
             st.readingPaused = true;
@@ -144,6 +147,7 @@ class TunnelEndpoint {
           }
           return null;
         case RawSocketEvent.readClosed:
+          if (st.finSent) return null;
           // 本地 socket 半关闭（对端关写）→ FIN（走 data，§3.2/§3.4.8）+ 信用补齐
           finalize(id);
           if (!st.finSent && !st.rst) {
@@ -152,10 +156,12 @@ class TunnelEndpoint {
               _sendData(encodeFrame(FrameType.fin, id), st);
             } catch (_) {}
           }
+          _maybeClose(id, st);
           return null;
         case RawSocketEvent.closed:
           finalize(id);
           streams.remove(id);
+          _pendingWrites.remove(id);
           return null;
         case RawSocketEvent.write:
           _flushPending(id, st);
@@ -273,9 +279,6 @@ class TunnelEndpoint {
         if (st == null || st.rst) return;
         if (st.finRecv) return; // 幂等（§3.3）
         st.finRecv = true;
-        try {
-          st.socket.shutdown(SocketDirection.send); // 半关闭：只关本端写方向，继续读（红线）
-        } catch (_) {}
         _maybeClose(id, st);
         return;
       case FrameType.rst:
@@ -289,6 +292,7 @@ class TunnelEndpoint {
             st.socket.close();
           } catch (_) {}
           streams.remove(id);
+          _pendingWrites.remove(id);
         }
         return; // 收到 RST 一律不回 RST（§3.3 防风暴）
       case FrameType.window:
@@ -333,8 +337,6 @@ class TunnelEndpoint {
       merged.setAll(0, pending);
       merged.setAll(pending.length, payload);
       _pendingWrites[id] = merged;
-      st.writtenSinceWindow += payload.length;
-      if (st.writtenSinceWindow >= windowThreshold) _sendWindow(id, st);
       st.socket.writeEventsEnabled = true;
       return;
     }
@@ -343,7 +345,7 @@ class TunnelEndpoint {
       _pendingWrites[id] = Uint8List.sublistView(payload, n);
       st.socket.writeEventsEnabled = true;
     }
-    st.writtenSinceWindow += payload.length;
+    st.writtenSinceWindow += n;
     if (st.writtenSinceWindow >= windowThreshold) _sendWindow(id, st);
   }
 
@@ -353,6 +355,8 @@ class TunnelEndpoint {
     final pending = _pendingWrites[id];
     if (pending == null) return;
     final n = st.socket.write(pending);
+    st.writtenSinceWindow += n;
+    if (st.writtenSinceWindow >= windowThreshold) _sendWindow(id, st);
     if (n < pending.length) {
       _pendingWrites[id] = Uint8List.sublistView(pending, n);
       st.socket.writeEventsEnabled = true;
@@ -364,12 +368,19 @@ class TunnelEndpoint {
   }
 
   void _maybeClose(int id, _Stream st) {
-    if (st.finRecv && _pendingWrites[id] == null) {
-      // 双向都关了 → 资源清理
+    if (!st.finRecv || _pendingWrites[id] != null) return;
+    if (!st.sendShutdown) {
+      st.sendShutdown = true;
       try {
-        st.socket.close();
+        st.socket.shutdown(SocketDirection.send);
       } catch (_) {}
     }
+    if (!st.finSent) return;
+    // 双向 FIN 且远端最后一批 DATA 已写入 socket → 资源清理
+    try {
+      st.socket.close();
+    } catch (_) {}
+    streams.remove(id);
   }
 
   void _sendWindow(int id, _Stream st) {

@@ -2,6 +2,7 @@
 
 | 编号 | 日期 | 类型 | 主题 | 影响文件 | 版本 |
 |---|---|---|---|---|---|
+| 032 | 2026-09-20 | 代码 + 测试 | 修复 Flutter 信令断线不重连、恢复路径复用旧 ptok、WINDOW 提前回填和 FIN 过早关流；新增 generation 隔离、一次性 token、部分写与 loopback 半关闭回归；ISS-004～007 进入验证中 | RemoteDSH-flutter/lib/{rtc,service}、RemoteDSH-flutter/test、ISSUES.md | 契约 v1.0.5（无契约变更） |
 | 031 | 2026-09-20 | 代码 + 纠偏 | 回填未随 018/022/023 合入的源码：fake-bridge TURN_HOST、2s 限流窗口复位、插件 20s gather + 30s rebuild 看门狗；ISS-001～003 关闭 | fake-bridge.mjs + 测试、dsh-mobile-link rtc/index + 测试、ISSUES.md | 契约 v1.0.5（无契约变更） |
 | 030 | 2026-09-20 | 用户决策 + 工具规则 | 建立动态问题台账：未解决/验证中置前，已解决置后；每项必须记录稳定 ID、引入原因、证据和关闭条件；规则写入项目 Skill | changelog/ISSUES.md、SKILL.md、changelog/030 | 契约 v1.0.5（无契约变更） |
 | 029 | 2026-09-20 | 代码 + 实验 | 修复插件 TURN username/credential 丢失；Flutter/插件双端启用 relay-only 并校验 offer 候选；修正 028“插件修复已落地”和“中间设备根因已定案”的表述，待真机长稳终验 | dsh-mobile-link/lib/{rtc,index}.js、dsh-mobile-link/test/rtc.test.mjs、RemoteDSH-flutter/lib/{rtc/rtc_link,service/harness}.dart、changelog/029 | 契约 v1.0.5（无契约变更） |
