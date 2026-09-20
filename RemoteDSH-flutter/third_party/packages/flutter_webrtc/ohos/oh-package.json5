@@ -1,0 +1,12 @@
+{
+  "name": "flutter_webrtc",
+  "version": "1.0.0",
+  "description": "Please describe the basic information.",
+  "main": "Index.ets",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "libohos_webrtc.so": "file:./src/main/libohos_webrtc",
+    "@ohos/flutter_ohos": "file:../libs/flutter.har"
+  }
+}

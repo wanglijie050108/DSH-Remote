@@ -1,0 +1,32 @@
+{
+  "string": [
+    {
+      "name": "page_show",
+      "value": "page from package"
+    },
+    {
+      "name": "internet",
+      "value": "internet"
+    },
+    {
+      "name": "camera",
+      "value": "camera"
+    },
+    {
+      "name": "microphone",
+      "value": "microphone"
+    },
+    {
+      "name": "reason_media_location",
+      "value": "For third-party camera to access media information scenarios"
+    },
+    {
+      "name": "reason_write_imagevideo",
+      "value": "For third-party camera to save media files"
+    },
+    {
+      "name": "reason_read_imagevideo",
+      "value": "For third-party camera to read media files"
+    }
+  ]
+}

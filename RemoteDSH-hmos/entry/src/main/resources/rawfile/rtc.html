@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>DSH RTC Harness</title>
+</head>
+<body>
+<script>
+// RemoteDSH 鸿蒙 harness —— ArkWeb 内 RTC 承载页
+// 角色：answer 侧（收到插件 punch.offer → 生成 answer）；探针 B 场景支持 offer 侧。
+// 与 ArkTS 的桥：hpc（javaScriptProxy 注册的对象，ArkTS→本页用 runJavaScript 调 window.__h.*）
+// 契约红线落地：
+//   · 非 trickle：等 iceGatheringState complete 再回 SDP（一次收齐候选）
+//   · pin 校验在 ArkTS 侧完成（本页不做信任判断）
+//   · 帧走 base64 中继（harness 专有；R3 吞吐瓶颈如出现再升级 ArkWeb C API）
+var H = { pc: null, chans: {}, cert: null, relayOnly: false, probeOfferPc: null };
+
+function b64FromBuf(buf) {
+  var bytes = new Uint8Array(buf);
+  var bin = '';
+  var CH = 0x8000;
+  for (var i = 0; i < bytes.length; i += CH) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + CH, bytes.length)));
+  }
+  return btoa(bin);
+}
+function bufFromB64(s) {
+  var bin = atob(s);
+  var u = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) { u[i] = bin.charCodeAt(i); }
+  return u;
+}
+function log(m) { try { hpc.onRtcLog(String(m)); } catch (e) {} }
+
+// ---- RTCCertificate 持久化（Chromium 的 RTCCertificate 可结构化克隆进 indexedDB） ----
+function openDb() {
+  return new Promise(function (res, rej) {
+    var rq = indexedDB.open('dsh-harness', 1);
+    rq.onupgradeneeded = function () { rq.result.createObjectStore('kv'); };
+    rq.onsuccess = function () { res(rq.result); };
+    rq.onerror = function () { rej(rq.error); };
+  });
+}
+function dbGet(db, key) {
+  return new Promise(function (res, rej) {
+    var tx = db.transaction('kv', 'readonly').objectStore('kv').get(key);
+    tx.onsuccess = function () { res(tx.result || null); };
+    tx.onerror = function () { rej(tx.error); };
+  });
+}
+function dbPut(db, key, val) {
+  return new Promise(function (res, rej) {
+    var tx = db.transaction('kv', 'readwrite').objectStore('kv').put(val, key);
+    tx.onsuccess = function () { res(); };
+    tx.onerror = function () { rej(tx.error); };
+  });
+}
+async function loadCert() {
+  if (H.cert) { return H.cert; }
+  try {
+    var db = await openDb();
+    var saved = await dbGet(db, 'cert');
+    if (saved) { H.cert = saved; log('cert: loaded from indexedDB'); return H.cert; }
+  } catch (e) { log('cert idb read fail: ' + e); }
+  H.cert = await RTCPeerConnection.generateCertificate({ name: 'ECDSA', namedCurve: 'P-256' });
+  try {
+    var db2 = await openDb();
+    await dbPut(db2, 'cert', H.cert);
+    log('cert: generated + persisted');
+  } catch (e) { log('cert idb write fail: ' + e); }
+  return H.cert;
+}
+
+function closePc() {
+  if (H.pc) { try { H.pc.close(); } catch (e) {} H.pc = null; }
+  H.chans = {};
+}
+
+function wireChannel(ch) {
+  if (ch.label !== 'data' && ch.label !== 'ctl' && ch.label !== 'probe') {
+    log('unknown channel label: ' + ch.label + ' → 协议错误');
+    hpc.onDataClose('bad:' + ch.label);
+    return;
+  }
+  ch.binaryType = 'arraybuffer';
+  H.chans[ch.label] = ch;
+  ch.onopen = function () { log('channel open: ' + ch.label); hpc.onDataOpen(ch.label); };
+  ch.onclose = function () { log('channel close: ' + ch.label); hpc.onDataClose(ch.label); };
+  ch.onmessage = function (ev) {
+    if (ev.data instanceof ArrayBuffer) { hpc.onFrame(ch.label, b64FromBuf(ev.data)); }
+    else { hpc.onFrame(ch.label, b64FromBuf(new TextEncoder().encode(String(ev.data)).buffer)); }
+  };
+}
+
+function gatherComplete(pc) {
+  return new Promise(function (res) {
+    if (pc.iceGatheringState === 'complete') { res(); return; }
+    var done = false;
+    var timer = setTimeout(function () { if (!done) { done = true; log('gather timeout(5s) → 用当前 SDP'); res(); } }, 5000);
+    pc.addEventListener('icegatheringstatechange', function () {
+      if (pc.iceGatheringState === 'complete' && !done) { done = true; clearTimeout(timer); res(); }
+    });
+  });
+}
+
+function filterRelaySdp(sdp) {
+  var lines = sdp.split(/\r?\n/);
+  var out = [];
+  for (var i = 0; i < lines.length; i++) {
+    var L = lines[i];
+    if (L.indexOf('a=candidate:') === 0 && L.indexOf(' typ relay ') < 0) { continue; }
+    out.push(L);
+  }
+  return out.join('\r\n');
+}
+
+function statsLines(sdp) {
+  var host = (sdp.match(/typ host/g) || []).length;
+  var srflx = (sdp.match(/typ srflx/g) || []).length;
+  var relay = (sdp.match(/typ relay/g) || []).length;
+  return 'host=' + host + ' srflx=' + srflx + ' relay=' + relay;
+}
+
+// ---- 主流程：answer 侧（手机角色） ----
+async function answerOffer(offerSdp, iceServersJson, relayOnly) {
+  H.relayOnly = relayOnly === true;
+  closePc();
+  var iceServers = [];
+  try { iceServers = JSON.parse(iceServersJson); } catch (e) { log('iceServers parse fail'); }
+  var cert = await loadCert();
+  var pc = new RTCPeerConnection({ iceServers: iceServers, certificates: [cert] });
+  H.pc = pc;
+  pc.ondatachannel = function (ev) { wireChannel(ev.channel); };
+  pc.onconnectionstatechange = function () {
+    log('connectionState: ' + pc.connectionState);
+    hpc.onIceState('connection:' + pc.connectionState);
+    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+      hpc.onDataClose('rtc');
+    }
+  };
+  pc.oniceconnectionstatechange = function () {
+    hpc.onIceState('ice:' + pc.iceConnectionState);
+  };
+  await pc.setRemoteDescription({ type: 'offer', sdp: offerSdp });
+  var answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer); // createAnswer 的 SDP 已含本地候选？非 trickle 要求 gather 完成
+  await gatherComplete(pc);
+  var sdp = pc.localDescription.sdp;
+  if (H.relayOnly) { sdp = filterRelaySdp(sdp); }
+  log('answer ready（' + statsLines(pc.localDescription.sdp) + (H.relayOnly ? ' → relay-only 过滤后' : '') + '）');
+  hpc.onSdp(sdp);
+}
+
+// ---- 探针 B：offer 侧（对 PC Chrome 手动换 SDP） ----
+async function makeOffer(iceServersJson) {
+  closePc();
+  var iceServers = [];
+  try { iceServers = JSON.parse(iceServersJson); } catch (e) {}
+  var cert = await loadCert();
+  var pc = new RTCPeerConnection({ iceServers: iceServers, certificates: [cert] });
+  H.pc = pc;
+  var dc = pc.createDataChannel('probe', { ordered: true });
+  wireChannel(dc);
+  pc.onconnectionstatechange = function () {
+    log('probe connectionState: ' + pc.connectionState);
+    hpc.onIceState('connection:' + pc.connectionState);
+  };
+  var offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await gatherComplete(pc);
+  log('probe offer ready（' + statsLines(pc.localDescription.sdp) + '）');
+  hpc.onSdp(pc.localDescription.sdp);
+}
+async function setAnswer(answerSdp) {
+  if (!H.pc) { hpc.onError('no pc'); return; }
+  await H.pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+  log('probe answer set');
+}
+
+window.__h = {
+  answer: function (offerSdp, iceServersJson, relayOnly) {
+    answerOffer(offerSdp, iceServersJson, relayOnly).catch(function (e) { hpc.onError('answer: ' + e); });
+  },
+  offer: function (iceServersJson) {
+    makeOffer(iceServersJson).catch(function (e) { hpc.onError('offer: ' + e); });
+  },
+  setAnswer: function (sdp) {
+    setAnswer(sdp).catch(function (e) { hpc.onError('setAnswer: ' + e); });
+  },
+  send: function (label, b64) {
+    var ch = H.chans[label];
+    if (ch && ch.readyState === 'open') { ch.send(bufFromB64(b64)); }
+  },
+  close: function () { closePc(); },
+  probe: function () {
+    var r = {
+      rtc: typeof RTCPeerConnection,
+      createDataChannel: 'unavailable',
+      generateCertificate: typeof RTCPeerConnection.generateCertificate,
+      ua: navigator.userAgent
+    };
+    try {
+      var t = new RTCPeerConnection();
+      r.createDataChannel = typeof t.createDataChannel;
+      t.close();
+    } catch (e) { r.createDataChannel = 'error:' + e; }
+    hpc.onProbe(JSON.stringify(r));
+  }
+};
+log('rtc.html loaded');
+try { hpc.onReady(); } catch (e) {}
+</script>
+</body>
+</html>

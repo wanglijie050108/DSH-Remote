@@ -1,5 +1,6 @@
 # 依赖与工具链
 node_modules/
+oh_modules/
 .tools/
 
 # 测试运行产物与本地状态（fake 工具的密钥/配对状态仅本机）
@@ -10,8 +11,15 @@ dtls-test.json
 # 构建产物
 dist/
 build/
+.dart_tool/
+.hvigor/
+.hap
 signal
 signal.exe
+
+# 鸿蒙/Flutter 本机文件
+local.properties
+.idea/
 
 # 环境变量与部署物（TURN_SECRET 等，deploy/DEPLOY.md 的 .env 指引）
 .env

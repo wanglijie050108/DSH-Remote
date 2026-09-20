@@ -1,0 +1,14 @@
+name: remotedsh_contract
+description: RemoteDSH 契约 v1.0.5 的 Dart 参考实现（frames/qr/fingerprint/hello/turn），与 go/js/kotlin 平级
+version: 1.0.5
+publish_to: none
+
+environment:
+  sdk: '>=2.19.6 <3.0.0'
+
+dependencies:
+  crypto: ^3.0.3
+  pointycastle: ^3.7.3
+
+dev_dependencies:
+  test: ^1.24.0

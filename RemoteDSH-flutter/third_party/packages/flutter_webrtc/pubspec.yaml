@@ -1,0 +1,52 @@
+name: flutter_webrtc
+description: Flutter WebRTC plugin for iOS/Android/Destkop/Web, based on GoogleWebRTC.
+version: 0.9.48+hotfix.1
+homepage: https://github.com/cloudwebrtc/flutter-webrtc
+environment:
+  sdk: '>=2.12.0 <4.0.0'
+  flutter: '>=1.22.0'
+
+publish_to: none
+dependencies:
+#  collection: ^1.17.0
+  dart_webrtc: 1.2.0
+
+  flutter:
+    sdk: flutter
+  path_provider:
+    git:
+      url: "https://gitcode.com/openharmony-sig/flutter_packages.git"
+      path: "packages/path_provider/path_provider"
+  webrtc_interface: 1.1.2 # 最新1.2.1版本移除了VideoRenderer会导致报错，故锁定版本
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  import_sorter: ^4.6.0
+  lints: ^2.0.0
+  pedantic: ^1.11.1
+  test: any
+  mockito: ^5.4.0
+  build_runner: ^2.4.0
+  coverage: ^1.6.3
+
+dependency_overrides:
+  meta: 1.16.0 # 解决版本冲突
+  collection: 1.17.1
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.cloudwebrtc.webrtc
+        pluginClass: FlutterWebRTCPlugin
+      ios:
+        pluginClass: FlutterWebRTCPlugin
+      macos:
+        pluginClass: FlutterWebRTCPlugin
+      windows:
+        pluginClass: FlutterWebRTCPlugin
+      linux:
+        pluginClass: FlutterWebRTCPlugin
+      ohos:
+        pluginClass: FlutterWebRTCPlugin
