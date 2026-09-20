@@ -204,6 +204,23 @@ retroactively. Records are **append-only**: a wrong record is corrected by a new
 names it, never edited or deleted. Review verdicts and user decisions get a record even when no
 file changes that day. Convention and template: `changelog/README.md`.
 
+### Live issue ledger
+
+`changelog/ISSUES.md` is the single live issue ledger and the only exception to the append-only
+rule above. Read it before planning or changing implementation code, and update it in the same
+sitting whenever an issue is found, changes state, or is resolved.
+
+- Keep every `未解决` or `验证中` item before the `已解决` section.
+- Give every issue a stable ID. Never reuse or renumber an ID.
+- Every issue MUST state its introduction/root cause, impact or evidence, and objective closure
+  criteria. `Unknown` is acceptable only when the investigation gap is stated.
+- Code written is not the same as resolved. Hardware, deployment, or E2E issues remain `验证中`
+  until the required real-environment check passes.
+- When an issue is resolved, move the whole entry to the end section, mark it `已解决`, and add the
+  fix, verification evidence, resolution date, and numbered changelog record. Never delete it.
+- If code contradicts an older changelog claim, trust the current code, keep the issue open, and
+  add a new numbered changelog correction; do not rewrite the old record.
+
 ## 9. Android code status (as of 2026-09-17, updated 014)
 
 The Android app compiles against a Kotlin toolchain but is **not yet verified on a real device**.

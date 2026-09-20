@@ -53,6 +53,8 @@ class Harness extends ChangeNotifier {
 
   static const int punchRetryMs = 25000;
   static const int punchMaxAttempts = 6;
+  static const bool relayOnly =
+      String.fromEnvironment('DSML_RELAY_ONLY', defaultValue: '1') != '0';
 
   void log(String s) {
     final now = DateTime.now();
@@ -374,7 +376,10 @@ class Harness extends ChangeNotifier {
     log('pin ok（与持久化 fp 逐字节一致）');
     _setPhase(HarnessPhase.connecting);
 
-    final rtcLink = await RtcLink.create(iceServerConfigs());
+    final rtcLink = await RtcLink.create(
+      iceServerConfigs(),
+      iceTransportPolicy: relayOnly ? 'relay' : 'all',
+    );
     rtc = rtcLink;
     pendingDataCh = null;
     pendingCtlCh = null;

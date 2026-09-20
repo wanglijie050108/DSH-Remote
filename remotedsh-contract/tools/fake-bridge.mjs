@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 // fake-bridge —— 契约 §4 信令服务的参考实现（presence-only）
 // 同时是 Go 版 Bridge（remotedsh-bridge）的行为规格：所有分支按契约 §4.1–§4.5 / 02 §2.1–§3.3 实现。
-// 用法：node tools/fake-bridge.mjs --port 8080 [--secret test-secret] [--pair-limit 256]
+// 用法：node tools/fake-bridge.mjs --port 8080 [--secret test-secret] [--turn-host 1.2.3.4] [--pair-limit 256]
 import { WebSocketServer } from 'ws'
-import { createHash, createHmac, createPublicKey } from 'node:crypto'
+import { createHash, createPublicKey } from 'node:crypto'
 import { verifyHello, PROTO_VER } from '../js/hello.mjs'
+import { allocTurn as allocTurnFor } from '../js/turn.mjs'
 
 const args = process.argv.slice(2)
 const argOf = (k, d) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : d }
 const PORT = Number(argOf('port', 8080))
 const TURN_SECRET = argOf('secret', process.env.TURN_SECRET || 'fake-bridge-secret')
+const TURN_HOST = argOf('turn-host', process.env.TURN_HOST || '127.0.0.1')
 const PAIR_LIMIT = Number(argOf('pair-limit', 256))
 const GRACE_MS = 24 * 3600 * 1000 // T = 24h（契约 §4.3，用户 2026-09-12 决策）
 const NONCE_WINDOW_MS = 130_000 // §4.1：去重窗口 MUST ≥ 120s（验签窗 ±60s + 余量）
@@ -34,10 +36,7 @@ let nextPairId = 1
 
 // ---------- TURN（契约 §5） ----------
 function allocTurn(pairId, ttl = 3600) {
-  const now = Math.floor(Date.now() / 1000)
-  const username = `${now + ttl}:${pairId}`
-  const credential = createHmac('sha1', TURN_SECRET).update(username).digest('base64')
-  return { uris: ['stun:127.0.0.1:3478', 'turn:127.0.0.1:3478?transport=udp', 'turn:127.0.0.1:3478?transport=tcp'], username, credential, ttl }
+  return allocTurnFor(TURN_SECRET, pairId, TURN_HOST, ttl)
 }
 
 // ---------- 工具 ----------
@@ -99,7 +98,7 @@ wss.on('connection', (ws, req) => {
   // 02 §5.1：XFF 取最右；仅在可信代理存在时采信。fake-bridge 无代理层 → 用 socket 地址
   const ip = req.socket.remoteAddress || 'unknown'
   const conn = { ws, ip, role: null, id: null, bootId: null, stale: false, gen: ++connGen }
-  lastSeen.set(conn, { count: 0, lastAt: Date.now(), helloOk: false })
+  lastSeen.set(conn, { count: 0, windowStartedAt: Date.now(), lastAt: Date.now(), helloOk: false })
 
   const helloDeadline = setTimeout(() => {
     if (!lastSeen.get(conn)?.helloOk) { log(`conn from ${ip}: hello deadline (10s) → close`); ws.close() }
@@ -108,7 +107,12 @@ wss.on('connection', (ws, req) => {
 
   ws.on('message', (raw) => {
     const ls = lastSeen.get(conn)
-    ls.lastAt = Date.now()
+    const now = Date.now()
+    ls.lastAt = now
+    if (now - ls.windowStartedAt >= 2000) {
+      ls.windowStartedAt = now
+      ls.count = 0
+    }
     if (++ls.count > MSG_RATE * 2) { errorTo(conn, 'RATE_LIMITED', 'too many messages'); return } // 粗粒度 2s 窗口
     if (raw.length > MAX_FRAME) { ws.close(1009, 'frame too large'); return }
     let msg
@@ -338,4 +342,4 @@ setInterval(() => {
   for (const [n, at] of nonces) if (now - at > NONCE_WINDOW_MS) nonces.delete(n)
 }, 30_000).unref?.()
 
-wss.on('listening', () => log(`listening on ws://127.0.0.1:${PORT}/v1/signal (path-agnostic fake; Go 版只挂 /v1/signal)`))
+wss.on('listening', () => log(`listening on ws://127.0.0.1:${PORT}/v1/signal (path-agnostic fake; Go 版只挂 /v1/signal) · turn_host=${TURN_HOST}`))
