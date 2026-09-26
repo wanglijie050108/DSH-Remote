@@ -1,6 +1,6 @@
 # 当前问题台账
 
-> 动态维护文件；最后核对：2026-09-20，分支 `qc_relay_anchor`。
+> 动态维护文件；最后核对：2026-09-26，分支 `main`。
 >
 > `未解决` 与 `验证中` 始终放在前面；只有代码、测试和适用的真机/线上验证全部完成后，才能移入文末的 `已解决`。历史事实仍由编号 changelog 追加记录，本文件只维护当前状态。
 
@@ -26,10 +26,13 @@
 | ISS-019 | P2 | 未解决 | Flutter UI 没有真正扫码能力 | B1 首版仅提供粘贴 URI 的验证入口，README/changelog 将其概括为扫码 | `main.dart:132-153` | 接入相机扫码并完成权限、取消、错误路径验证 |
 | ISS-020 | P2 | 未解决 | 四项业务功能尚未验收 | 周期断线和白屏阻断了列会话、历史、发消息、审批作答 | changelog 026/028 | 四项在真机 relay 与自动择路路径分别完成验收 |
 | ISS-021 | P2 | 未解决 | 部署安全组 8080/TCP 对全网开放 | 开发期为绕过出口 IP 变化临时使用 `0.0.0.0/0` | changelog 021 | 收窄到明确来源或迁移到有认证加密的正式入口 |
-| ISS-022 | P2 | 未解决 | changelog 引用的方案、NOTICE 和工具链文件缺失，Skill 校验锚点仍旧 | 015–028 从另一工作树补录时只带入部分产物 | 缺 `new_docs/06`、`new_docs/07`、`RemoteDSH-flutter/NOTICE.md`、`b1-recon/env.sh`；020 所述 Skill/脚本修改未落地 | 找回原产物或新增纠正记录明确废弃；校验脚本在当前 DSH 安装上通过 |
+| ISS-022 | P2 | 未解决 | changelog 引用的方案、NOTICE 和工具链文件缺失，Skill 校验锚点仍旧 | 015–028 从另一工作树补录时只带入部分产物；校验器只识别已安装包布局 | 缺 `new_docs/06`、`new_docs/07`、`RemoteDSH-flutter/NOTICE.md`、`b1-recon/env.sh`；校验器不能读取 DSH 0.1.7 monorepo，且 F6 的“清空 path/search/hash”已不符合 `browser-auth.ts:authenticatedUrl` 的保留 mount 语义 | 找回原产物或新增纠正记录明确废弃；校验器支持当前安装与 monorepo 源码布局，并按现行语义通过 |
 | ISS-023 | P2 | 未解决 | Android 真机门禁仍未执行 | 当前只有鸿蒙设备，Android org.webrtc/明文 loopback/ABI 未实测 | Skill §9、`new_docs/03` §1 | Android 真机完成 G1/E4、DataChannel 和 ABI 验证 |
 | ISS-024 | P2 | 未解决 | 原生 Hmos 路线仍有周期断线、白屏和不可观测问题 | ArkWeb 承载 RTC 与复杂 SPA，平台限制无法在应用层稳定修复 | changelog 025/026/028 | 当前冻结；若恢复路线，须先完成 relay 长稳和四功能验收，否则正式标记废弃 |
 | ISS-025 | P2 | 未解决 | `dsh exit 1` 是否存在独立崩溃路径未定 | 只在 RATE_LIMITED 僵尸风暴期间出现，源头修复后的长期证据未归档到仓库 | changelog 023 §“dsh exit 1 判定” | 修复 ISS-002 后长稳验证；若复现，保留退出追踪和堆栈 |
+| ISS-026 | P1 | 未解决 | DSH Desktop 中首次配对二维码不可见 | 插件只有 Host 端，`printQr()` 仅写 stdout；GUI 启动时 Desktop Host stdout 只转发到 Electron 父进程 stdout，没有产品 UI 展示入口 | `dsh-mobile-link/lib/index.js:printQr`；DSH `apps/desktop/src/host-process.ts:child.stdout?.pipe(process.stdout)` | Desktop 插件页或等价受控 UI 能展示已 ACK 的一次性 QR/URI，并覆盖过期、配对成功和重发纪律 |
+| ISS-027 | P1 | 未解决 | Web CLI 与 Desktop 同时启用 Mobile Link 会互相踢线并销毁配对 | 两个 profile 共享 `$DSH_HOME/mobile-link/identity.json`，因此 `agent_id` 相同但进程级 `boot_id` 不同；Bridge 对同 ID 只保留最后连接，并将不同 boot_id 判为 DSH 重启 | `dsh-mobile-link/lib/keys.js:identityPath`、`processBootId()`；`hub.AttachAgent`、`AgentHelloCheck` | 明确产品只支持单活并阻止/提示重复实例，或完成 profile/实例身份模型与手机端目标选择设计及双实例 E2E |
+| ISS-028 | P2 | 未解决 | Desktop 独立 profile 的安装、配置和自救路径未纳入项目文档 | 原方案只写 `dsh plugin --profile web` 与 `profiles/web/cordis.patch.yml`；DSH 0.1.7 明确拒绝 CLI 管理保留的 `desktop` profile，要求从 Desktop 插件页管理 | `docs/01` §2；`dsh-mobile-link/lib/config.js:SELF_RESCUE`；DSH `apps/cli/src/args.ts`、`apps/desktop/README.zh.md` | 文档区分 Web/Desktop 安装路径；Desktop 配置可从 `$DSH_HOME/.env` 读取；启动失败时给出 Desktop 原生恢复或正确 profile 自救指引 |
 
 ## 已解决
 
