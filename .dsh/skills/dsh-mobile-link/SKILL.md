@@ -28,6 +28,9 @@ node .dsh/skills/dsh-mobile-link/scripts/verify-dsh-facts.mjs
 ```
 
 Any FAIL means a fact this project depends on has moved. Report it before writing code.
+The current verifier only recognizes an installed npm layout. For the DSH 0.1.7 monorepo source
+checkout, a locator failure is tracked by ISS-022: report the missing automated certification and
+use the pinned source anchors in §10; do not reinterpret a locator failure as a semantic regression.
 
 ## 1. Sources of truth
 
@@ -35,7 +38,7 @@ Never edit these four; they are inputs, not notes. Resolve disagreements **in th
 
 | Order | Document | Holds |
 |---|---|---|
-| 1 | `docs/00-接口契约(2).md` (**v1.0.5**) | The only interface truth for all three components |
+| 1 | `docs/00-接口契约(1).md` (**v1.0.5**) | The only interface truth for all three components |
 | 2 | `docs/01-DSH端插件实施方案(1).md` (v1.2) | Plugin form, lifecycle, module design, DoD |
 | 3 | `docs/02-服务端实施方案(1).md` (v1.2) | Bridge / coturn / Caddy |
 | 4 | `docs/03-APP端实施方案(1).md` (v1.2) | Android app |
@@ -74,21 +77,21 @@ any row marked ⚠.**
 
 | # | Fact | Source |
 |---|---|---|
-| 1 | `/api` Host fence checks **only that the hostname is loopback — not the port** | ⚠ `…/dsh-client-connection/lib/index.js` `isTrustedApiRequest` |
+| 1 | `/api` Host fence requires a loopback/trusted Host, rejects explicit cross-site fetches, and requires any `Origin` to match `Host`; loopback trust itself does not pin a port | ⚠ `…/dsh-client-connection/lib/index.js` `isTrustedApiRequest`; 0.1.7 source `packages/client/connection/src/api-request-trust.ts` |
 | 2 | Cookie name = `dsh-auth-<base64url(sha256(authority))>`; authority **includes the port** | ⚠ same file, `cookieName` / `requestAuthority` |
 | 3 | `GET /` without a valid cookie → **401**, emitted by `writeUnauthorized` (not a literal `return 401`) | ⚠ same file, `authorizeIndex` → `writeUnauthorized` |
 | 4 | Token exchange requires **exactly** `GET` + `pathname === "/"` + **exactly one** `token` param → **303 + Set-Cookie**; any extra query param is fine | ⚠ same file, `authorizeIndex` |
 | 5 | `ctx.webServer.port` is the **real listening port**; `ctx.webServer.host` returns the **configured** value (may be `0.0.0.0`) | `…/dsh-host-webserver/lib/index.js` (`get port` / `get host`) |
-| 6 | `ctx.connection.authenticatedUrl(baseUrl)` returns this process's launch token as the sole query param, after clearing path/search/hash | ⚠ `…/dsh-client-connection/lib/index.js` `authenticatedUrl` |
+| 6 | In DSH 0.1.7, `ctx.connection.authenticatedUrl(baseUrl)` preserves the supplied URL and sets/replaces its `token` query value; Mobile Link passes a clean root URL, so its result still has only that query input | ⚠ 0.1.7 source `packages/client/connection/src/browser-auth.ts` `authenticatedUrl` |
 | 7 | `/api/remote.mux`: heartbeat **2000 ms**, **2** consecutive missed pongs → `terminate()`; a binary frame → `close(1003)` | ⚠ `…/dsh-api-gateway/lib/index.js` |
 | 8 | The mux **upgrade** passes the same fence | ⚠ same file |
 | 9 | DSH frontend backoff is `500 ms / ×2 / max 10 s`; the last tier emits `disconnected` and **waits forever** → self-healing window is exactly **12.75–25.5 s** | ⚠ `…/dsh-client-connection/lib/client.js` |
 | 10 | `online` / `offline` fire only on **system** network changes — they do **not** observe a dead tunnel | ⚠ same file |
-| 11 | web profile sets **`patchReload: "live"`** → editing the plugin hot-reloads it **without** restarting the process | ⚠ `…/dsh-app-boot/lib/index.js` |
+| 11 | Profiles carrying `profileContext` enable DSH HMR; Desktop initializes from the Web bundle set and supplies `profileContext`, so profile/plugin changes can dispose and recreate the plugin without restarting the process | ⚠ 0.1.7 source `packages/boot/hmr`, `apps/desktop/src/project-manager.ts`, `apps/desktop-host/src/index.ts` |
 | 12 | A failed activation **fails DSH startup**; a row stuck in `FIBER_PENDING` (missing injected service) **counts as failed** | ⚠ same file, `assertEntriesActivated` |
 | 13 | The fail-fast escape hatch is real: add `- id: mobile-link` + `disabled: true` to the profile patch | same file; profile templates document `disabled` |
 | 14 | Bundle resolution walks the filesystem and **does not require `exports`** — `manifest` and patch are read by absolute path | `…/dsh-app-boot/lib/index.js` `resolveBundleDir` / `packageDirFromAnchor` |
-| 15 | `dsh plugin --profile web add` forwards to pnpm (no pnpm → exit 127), then `reconcilePlugins` writes `dsh.profile.bundles` | `lib/plugin-*.js` |
+| 15 | `dsh plugin --profile web add` forwards to pnpm, but CLI explicitly rejects the reserved `desktop` profile; Desktop plugins are managed by its authenticated Plugins page and bundled pnpm | `lib/plugin-*.js`; 0.1.7 source `apps/cli/src/args.ts`, `packages/boot/plugin-manager`, `apps/desktop/README.md` |
 | 16 | Changing `Host`: `/api*` → **403**, `GET /` → **401**, `/plugins/*` and dist assets → **200** | the fence + index authorization + static routes |
 | 17 | `approval/request` is a **waterfall**; service name is **`approval`** | ⚠ `…/dsh-user-approval/lib/index.js` |
 | 18 | `ctx.storage` is a **registry (hub), not a KV store**; records go through `ctx.storageDomain` | `…/dsh-storage`, `…/dsh-storage-domain` |
@@ -250,3 +253,27 @@ The following tracks what has been wired and what still needs device testing:
 | E4 risk (WebView plaintext loopback) | Must test on real Android device |
 | `org.webrtc` ABI / NDK / ProGuard | Only surfaces when building and running on device |
 | DataChannel parameter compatibility | Must verify ordered/binary between werift and Google WebRTC |
+
+## 10. DSH Desktop compatibility (verified 2026-09-27)
+
+Source baseline: `deepseek-ai/deepseek-harness@477b4f420553e8a52c2fbccc464d7561b239c443`
+(`dsh-v0.1.7-rc.2`). The complete project decision and gates are in
+`new_docs/08-DSH桌面端兼容与迁移方案.md`.
+
+| Fact / decision | Source / consequence |
+|---|---|
+| Desktop is an Electron shell over the shared Web Host | `apps/desktop-host/src/index.ts` runs profile `desktop` on default port `19387` |
+| Desktop reuses the Web bundle roster | `apps/desktop/src/project-manager.ts` copies `PROFILE_TEMPLATES.web.bundles`; Mobile Link's `ctx.webServer.port` path remains valid |
+| Desktop's `dsh-app://app` forwards authenticated HTTP to Host | `apps/desktop/src/web-document.ts`; an exact `ctx.connection.fetch` route under `/api` keeps the Host/Origin fence and cookie admission |
+| CLI MUST NOT manage `profiles/desktop` | `apps/cli/src/args.ts:rejectElectronProfile`; use Desktop's Plugins page and bundled pnpm |
+| Closing the main Desktop window normally hides it and keeps Host alive | Ordinary close must not be treated as a DSH restart |
+| A real quit or update restart changes process-level `boot_id` | Contract §4.3 still destroys the pair and requires a rescan; do not weaken this for Desktop |
+| v1 supports one active Mobile Link agent per `DSH_HOME` | Web and Desktop share `mobile-link/identity.json`; without a local lease, the same `agent_id` plus different `boot_id` kicks the old connection and destroys its pair |
+| Desktop QR belongs in the plugin detail page, not Electron IPC | Add a `dsh.client` contribution to `plugins.detail.section`; read no-secret status and in-memory PNG through authenticated, no-store `/api` routes |
+| QR UI MUST be Desktop-only | Require `dsh-app://app` plus `globalThis.dshDesktop.protocolVersion === 1`; the QR route also rejects the phone authority |
+| Current implementation is not Desktop-ready | ISS-026–031 cover UI, single-active ownership, install/recovery, QR rotation, private-key permissions, and package compatibility |
+
+The legacy verifier currently recognizes installed npm package layouts, not this monorepo source
+layout, and some of its pre-0.1.7 textual anchors are stale (ISS-022). A “could not locate a DSH
+install” result blocks automated certification but is not evidence that a runtime fact changed.
+Until ISS-022 closes, cite the source paths above and keep Desktop support in `验证中`.

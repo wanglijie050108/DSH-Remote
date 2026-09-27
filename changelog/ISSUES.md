@@ -1,6 +1,6 @@
 # 当前问题台账
 
-> 动态维护文件；最后核对：2026-09-26，分支 `main`。
+> 动态维护文件；最后核对：2026-09-27，分支 `main`。
 >
 > `未解决` 与 `验证中` 始终放在前面；只有代码、测试和适用的真机/线上验证全部完成后，才能移入文末的 `已解决`。历史事实仍由编号 changelog 追加记录，本文件只维护当前状态。
 
@@ -30,9 +30,12 @@
 | ISS-023 | P2 | 未解决 | Android 真机门禁仍未执行 | 当前只有鸿蒙设备，Android org.webrtc/明文 loopback/ABI 未实测 | Skill §9、`new_docs/03` §1 | Android 真机完成 G1/E4、DataChannel 和 ABI 验证 |
 | ISS-024 | P2 | 未解决 | 原生 Hmos 路线仍有周期断线、白屏和不可观测问题 | ArkWeb 承载 RTC 与复杂 SPA，平台限制无法在应用层稳定修复 | changelog 025/026/028 | 当前冻结；若恢复路线，须先完成 relay 长稳和四功能验收，否则正式标记废弃 |
 | ISS-025 | P2 | 未解决 | `dsh exit 1` 是否存在独立崩溃路径未定 | 只在 RATE_LIMITED 僵尸风暴期间出现，源头修复后的长期证据未归档到仓库 | changelog 023 §“dsh exit 1 判定” | 修复 ISS-002 后长稳验证；若复现，保留退出追踪和堆栈 |
-| ISS-026 | P1 | 未解决 | DSH Desktop 中首次配对二维码不可见 | 插件只有 Host 端，`printQr()` 仅写 stdout；GUI 启动时 Desktop Host stdout 只转发到 Electron 父进程 stdout，没有产品 UI 展示入口 | `dsh-mobile-link/lib/index.js:printQr`；DSH `apps/desktop/src/host-process.ts:child.stdout?.pipe(process.stdout)` | Desktop 插件页或等价受控 UI 能展示已 ACK 的一次性 QR/URI，并覆盖过期、配对成功和重发纪律 |
-| ISS-027 | P1 | 未解决 | Web CLI 与 Desktop 同时启用 Mobile Link 会互相踢线并销毁配对 | 两个 profile 共享 `$DSH_HOME/mobile-link/identity.json`，因此 `agent_id` 相同但进程级 `boot_id` 不同；Bridge 对同 ID 只保留最后连接，并将不同 boot_id 判为 DSH 重启 | `dsh-mobile-link/lib/keys.js:identityPath`、`processBootId()`；`hub.AttachAgent`、`AgentHelloCheck` | 明确产品只支持单活并阻止/提示重复实例，或完成 profile/实例身份模型与手机端目标选择设计及双实例 E2E |
-| ISS-028 | P2 | 未解决 | Desktop 独立 profile 的安装、配置和自救路径未纳入项目文档 | 原方案只写 `dsh plugin --profile web` 与 `profiles/web/cordis.patch.yml`；DSH 0.1.7 明确拒绝 CLI 管理保留的 `desktop` profile，要求从 Desktop 插件页管理 | `docs/01` §2；`dsh-mobile-link/lib/config.js:SELF_RESCUE`；DSH `apps/cli/src/args.ts`、`apps/desktop/README.zh.md` | 文档区分 Web/Desktop 安装路径；Desktop 配置可从 `$DSH_HOME/.env` 读取；启动失败时给出 Desktop 原生恢复或正确 profile 自救指引 |
+| ISS-026 | P1 | 未解决 | DSH Desktop 中首次配对二维码不可见 | 插件只有 Host 端，`printQr()` 仅写 stdout；GUI 启动时 Desktop Host stdout 只转发到 Electron 父进程 stdout，没有产品 UI 展示入口 | `dsh-mobile-link/lib/index.js:printQr`；DSH `apps/desktop/src/host-process.ts:child.stdout?.pipe(process.stdout)` | Desktop 插件详情页仅在可信 `dsh-app://app` 主页面展示已 ACK 的 QR；状态/PNG 走已认证 `/api`、不含明文秘密且不缓存；手机和普通 Web 页面不显示 |
+| ISS-027 | P1 | 未解决 | Web CLI 与 Desktop 同时启用 Mobile Link 会互相踢线并销毁配对 | 两个 profile 共享 `$DSH_HOME/mobile-link/identity.json`，因此 `agent_id` 相同但进程级 `boot_id` 不同；Bridge 对同 ID 只保留最后连接，并将不同 boot_id 判为 DSH 重启 | `dsh-mobile-link/lib/keys.js:identityPath`、`processBootId()`；`hub.AttachAgent`、`AgentHelloCheck` | 实现每个 DSH_HOME 的进程级原子单活租约，且先取得租约再读/生成 identity；冲突方不得连接 Bridge；覆盖双进程、死进程回收、HMR、disabled 和 nonce 防误删测试 |
+| ISS-028 | P2 | 未解决 | Desktop 独立 profile 的安装、配置和自救路径未纳入项目文档 | 原方案只写 `dsh plugin --profile web` 与 `profiles/web/cordis.patch.yml`；DSH 0.1.7 明确拒绝 CLI 管理保留的 `desktop` profile，要求从 Desktop 插件页管理 | `docs/01` §2；`dsh-mobile-link/lib/config.js:SELF_RESCUE`；DSH `apps/cli/src/args.ts`、`apps/desktop/README.zh.md` | 文档写明“停用 Web→配置 home `.env`→Desktop 插件页安装但先关闭→检查后启用”；失败优先走 Desktop 原生恢复，并完成打包态安装/卸载演练 |
+| ISS-029 | P1 | 未解决 | 未配对二维码 5 分钟过期后不会自动换新 | 插件只在 `hello.ok{pair:null}` 等事件调用 `registerPairToken()`，没有 token 到期 timer；Bridge 在 300s 后拒绝旧 hash | `dsh-mobile-link/lib/index.js:registerPairToken/printQr`；`hub.RegisterPairToken/ConsumePairToken` | 采用 generation 隔离并在 285s 清旧图后轮换；旧代 QR 失效、迟到生成不能复活、配对成功和 dispose 清 timer |
+| ISS-030 | P1 | 未解决 | 插件身份私钥在 POSIX 上默认权限过宽且写入非原子 | `mkdirSync`/`writeFileSync` 未指定 mode，也未用临时文件；当前 macOS 实测目录 `0755`、`identity.json` `0644` | `dsh-mobile-link/lib/keys.js:loadIdentity`；2026-09-27 本机 mode 实测 | 目录 `0700`、文件 `0600`、`wx` 临时文件 + flush + rename；拒绝目录/identity symlink 和非普通文件；安全收紧旧文件并补权限/中断写测试 |
+| ISS-031 | P1 | 未解决 | 插件未声明 DSH/Node 兼容范围，也没有 Desktop 客户端 bundle 与可安装发布产物门禁 | `package.json` 无 `engines`、DSH peer、`dsh.client`、`./client` 和构建脚本；DSH 0.1.7 API 为 pre-stable | `dsh-mobile-link/package.json`；DSH plugin-manager 版本兼容检查 | 声明精确已验证 DSH peer 和 Node engine，构建/检查客户端产物，打包内容可审计；D0–D8 通过后才扩兼容范围且不得用豁免代替验证 |
 
 ## 已解决
 
